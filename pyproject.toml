@@ -8,7 +8,9 @@ license = { text = "MIT" }
 authors = [
     { name = "SRogDev" },
 ]
-dependencies = []
+dependencies = [
+    "pyyaml>=6.0.3",
+]
 
 [project.scripts]
 simwork = "simwork.cli:main"
