@@ -4,7 +4,7 @@ Simulate AI-app functionality first — before spending real LLM or world API ca
 
 SimWork lets a Python developer add simulation to an existing app or harness with minimal setup: every AI call routes to an LLM mock and every API call routes to an API mock. A full simulated run costs **$0 by default**, with zero real network calls to LLM providers or real world APIs.
 
-> **Status: Phase 1 — LLM mock in progress (v0.1.0).** Tenro 0.2.3 was evaluated and **not** adopted as the interception layer (it requires decorating the harness, which contradicts the spec's no-rewrite rule — see `docs/tenro-evaluation-2026-11-16.md`). SimWork's own scripted, deterministic fake OpenAI server is in place (`simwork.llm`: `ScriptedLLM` + `FakeOpenAIServer`), and scripted turns now load from YAML scenario files (`simwork.llm.load_scenario`, 31 tests). Routing (`SIMWORK_MODE=simulate`) and the LangGraph demo are next. The API mock (Phase 2), DeepEval harness (Phase 3) and `simwork init` + demo (Phase 4) are not built yet. See `docs/` for the spec.
+> **Status: Phase 1 — LLM mock + routing complete (v0.1.0).** Tenro 0.2.3 was evaluated and **not** adopted as the interception layer (it requires decorating the harness, which contradicts the spec's no-rewrite rule — see `docs/tenro-evaluation-2026-11-16.md`). SimWork's own scripted, deterministic fake OpenAI server is in place (`simwork.llm`: `ScriptedLLM` + `FakeOpenAIServer`), scripted turns load from YAML scenario files (`simwork.llm.load_scenario`), and routing is wired: `SIMWORK_MODE=simulate` + a scenario file starts the mock server (`simwork serve` or `SimWorkRouter`), 48 tests. The API mock (Phase 2), DeepEval harness (Phase 3) and `simwork init` + demo (Phase 4) are not built yet. See `docs/` for the spec.
 
 ## Quickstart
 
@@ -15,6 +15,37 @@ uv run pytest
 ```
 
 Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/).
+
+## Routing (`SIMWORK_MODE=simulate`)
+
+Routing decides where AI calls go. In simulate mode every AI call routes to the mock LLM server; in live mode SimWork does nothing and the harness talks to its real provider. Anything misconfigured fails closed instead of silently falling back to a real call.
+
+```bash
+# Serve the mock from a scenario file (prints the env vars to point at it)
+simwork serve --scenario scenario.yaml --port 8123
+# OPENAI_BASE_URL=http://127.0.0.1:8123/v1
+# OPENAI_API_KEY=simwork-simulated
+```
+
+Environment variables:
+
+| Variable | Meaning |
+|---|---|
+| `SIMWORK_MODE` | `simulate` or `live` (default `live` — simulate is explicit opt-in, so an unset variable never silently intercepts a harness) |
+| `SIMWORK_SCENARIO` | Path to the YAML scenario file; required in simulate mode |
+| `SIMWORK_HOST` | Bind host for the fake server (default `127.0.0.1`) |
+| `SIMWORK_PORT` | Bind port (default `0` = ephemeral) |
+
+From Python, the same routing is available as a context manager — the harness only needs a base-URL swap:
+
+```python
+import os
+from simwork import SimWorkRouter
+
+with SimWorkRouter.from_env() as router:  # reads SIMWORK_MODE / SIMWORK_SCENARIO
+    os.environ.update(router.env_overrides)  # OPENAI_BASE_URL + dummy OPENAI_API_KEY
+    run_harness()  # $0, no real LLM calls
+```
 
 ## Scenario files
 
@@ -47,7 +78,7 @@ In simulate mode SimWork makes zero real calls to LLM providers and zero real ca
 | Phase | What | Status |
 |---|---|---|
 | 0 | Repo foundation: package, CLI, licence, CI | ✅ Done |
-| 1 | LLM mock (OpenAI-compatible, scripted + deterministic) + routing | In progress — Tenro evaluated, not adopted (see `docs/tenro-evaluation-2026-11-16.md`); scripted LLM + fake server + YAML scenarios landed |
+| 1 | LLM mock (OpenAI-compatible, scripted + deterministic) + routing | ✅ Done — Tenro evaluated, not adopted (see `docs/tenro-evaluation-2026-11-16.md`); scripted LLM + fake server + YAML scenarios + routing (`SIMWORK_MODE` / `simwork serve`) landed |
 | 2 | API mock via Prism + APIs.guru, with a stateful stub layer | Planned |
 | 3 | DeepEval harness + pass/fail report | Planned |
 | 4 | `simwork init` + pre-made AI configuration prompt + LangGraph demo end-to-end | Planned |

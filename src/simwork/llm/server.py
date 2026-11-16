@@ -20,9 +20,15 @@ class FakeOpenAIServer:
     """Serves a scripted LLM at ``{base_url}/v1/chat/completions``."""
 
     def __init__(
-        self, script: list[dict], *, seed: int = 0, host: str = "127.0.0.1", port: int = 0
+        self,
+        script: list[dict],
+        *,
+        seed: int = 0,
+        model: str = "simwork-mock",
+        host: str = "127.0.0.1",
+        port: int = 0,
     ):
-        self.llm = ScriptedLLM(script, seed=seed)
+        self.llm = ScriptedLLM(script, seed=seed, model=model)
         self.host = host
         self.port = port
         self._httpd: ThreadingHTTPServer | None = None
