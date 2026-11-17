@@ -4,7 +4,8 @@ Phase 2, task 1 — ``simwork mock --api <name>`` only: resolve the API's
 preferred version in the APIs.guru catalog, download its OpenAPI spec
 (cached under ``~/.cache/simwork``), and run it as a mock with Prism
 (``@stoplight/prism-cli``) as a sidecar subprocess. The stateful stub
-layer is a later Phase 2 task.
+layer (Phase 2, task 2) is `simwork.stateful`, layered in front of Prism
+by `simwork mock --stateful`.
 
 Fail-closed, per the spec: an unknown API name, a download failure, a
 missing ``prism`` binary, or a Prism process that exits early all raise
@@ -171,8 +172,7 @@ class PrismMockServer:
         binary = self.prism_bin or shutil.which("prism")
         if binary is None:
             raise ApiMockError(
-                "the `prism` binary was not found on PATH — install it with "
-                f"{_PRISM_INSTALL_HINT}"
+                f"the `prism` binary was not found on PATH — install it with {_PRISM_INSTALL_HINT}"
             )
         if self.port == 0:
             self.port = _free_port(self.host)
