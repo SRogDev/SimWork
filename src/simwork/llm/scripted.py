@@ -10,6 +10,10 @@ from __future__ import annotations
 
 import copy
 import json
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from simwork.trace import TraceRecorder
 
 Turn = dict
 
@@ -27,10 +31,18 @@ class ScriptedLLM:
     determined by the seed and the turn index.
     """
 
-    def __init__(self, script: list[Turn], *, seed: int = 0, model: str = "simwork-mock"):
+    def __init__(
+        self,
+        script: list[Turn],
+        *,
+        seed: int = 0,
+        model: str = "simwork-mock",
+        recorder: TraceRecorder | None = None,
+    ):
         self._script = [copy.deepcopy(turn) for turn in script]
         self.seed = seed
         self.model = model
+        self.recorder = recorder
         self.calls: list[list[dict]] = []
         self._index = 0
 
@@ -45,7 +57,10 @@ class ScriptedLLM:
         self.calls.append(copy.deepcopy(messages))
         turn_index = self._index
         self._index += 1
-        return self._completion(turn, turn_index)
+        completion = self._completion(turn, turn_index)
+        if self.recorder is not None:
+            self.recorder.record_completion(completion)
+        return completion
 
     def reset(self) -> None:
         """Restart the script from the first turn (same seed, same trace)."""

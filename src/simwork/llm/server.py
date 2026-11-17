@@ -12,8 +12,12 @@ from __future__ import annotations
 import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from typing import TYPE_CHECKING
 
 from simwork.llm.scripted import ScriptedLLM, ScriptExhaustedError
+
+if TYPE_CHECKING:
+    from simwork.trace import TraceRecorder
 
 
 class FakeOpenAIServer:
@@ -27,8 +31,10 @@ class FakeOpenAIServer:
         model: str = "simwork-mock",
         host: str = "127.0.0.1",
         port: int = 0,
+        recorder: TraceRecorder | None = None,
     ):
-        self.llm = ScriptedLLM(script, seed=seed, model=model)
+        self.llm = ScriptedLLM(script, seed=seed, model=model, recorder=recorder)
+        self.recorder = recorder
         self.host = host
         self.port = port
         self._httpd: ThreadingHTTPServer | None = None

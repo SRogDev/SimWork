@@ -24,9 +24,12 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
-from typing import Mapping
+from typing import TYPE_CHECKING, Mapping
 
 from simwork.llm import FakeOpenAIServer, load_scenario
+
+if TYPE_CHECKING:
+    from simwork.trace import TraceRecorder
 
 _MODES = ("simulate", "live")
 _SIMULATED_API_KEY = "simwork-simulated"
@@ -90,13 +93,16 @@ class SimWorkRouter:
             run_harness()                            # $0, no real LLM calls
     """
 
-    def __init__(self, config: SimWorkConfig):
+    def __init__(self, config: SimWorkConfig, recorder: TraceRecorder | None = None):
         self.config = config
+        self.recorder = recorder
         self._server: FakeOpenAIServer | None = None
 
     @classmethod
-    def from_env(cls, env: Mapping[str, str] | None = None) -> "SimWorkRouter":
-        return cls(load_config(env))
+    def from_env(
+        cls, env: Mapping[str, str] | None = None, recorder: TraceRecorder | None = None
+    ) -> "SimWorkRouter":
+        return cls(load_config(env), recorder=recorder)
 
     def __enter__(self) -> "SimWorkRouter":
         if self.config.mode == "live":
@@ -109,6 +115,7 @@ class SimWorkRouter:
             model=scenario.model,
             host=self.config.host,
             port=self.config.port,
+            recorder=self.recorder,
         ).start()
         return self
 
