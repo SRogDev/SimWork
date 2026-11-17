@@ -1,8 +1,9 @@
 """Command-line entry point for SimWork.
 
 Phase 1: `serve` starts the fake OpenAI server from a scenario file so
-an unmodified harness can point at it with a base-URL swap. Subcommands
-(`init`, `mock`, `eval`) land in later phases, per the spec.
+an unmodified harness can point at it with a base-URL swap. `mock`
+(Phase 2) and `eval` (Phase 3, first slice) are wired; `init` lands in
+Phase 4, per the spec.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ import threading
 
 from simwork import __version__
 from simwork.api_mock import ApiMockError, PrismMockServer, fetch_api_spec
+from simwork.eval import TraceError, evaluate_run, load_trace
 from simwork.llm import ScenarioError
 from simwork.routing import RoutingError, SimWorkRouter, load_config
 from simwork.stateful import StatefulStubServer
@@ -95,6 +97,29 @@ def build_parser() -> argparse.ArgumentParser:
             "add the stateful stub layer in front of Prism: writes are "
             "remembered, so create-then-read returns the created record"
         ),
+    )
+
+    eval_cmd = sub.add_parser(
+        "eval",
+        help="evaluate a recorded run trace (DeepEval harness, first slice)",
+        description=(
+            "Evaluate a recorded run trace (JSON, see examples/) with the "
+            "deterministic metrics tool correctness + task completion and "
+            "print a pass/fail report. Exits 0 when the gate passes, 1 when "
+            "it fails. $0 — no LLM judge, no network."
+        ),
+    )
+    eval_cmd.add_argument(
+        "--trace",
+        metavar="FILE",
+        required=True,
+        help="JSON trace file of a recorded run",
+    )
+    eval_cmd.add_argument(
+        "--report",
+        metavar="FILE",
+        default=None,
+        help="also write the machine-readable JSON report to this file",
     )
     return parser
 
@@ -178,6 +203,26 @@ def cmd_mock(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_eval(args: argparse.Namespace) -> int:
+    """Evaluate a recorded trace; exit 0 on pass, 1 on fail (or bad trace)."""
+    try:
+        trace = load_trace(args.trace)
+        report = evaluate_run(trace)
+    except TraceError as e:
+        print(f"simwork eval: error: {e}", file=sys.stderr)
+        return 1
+    print(report.to_text(), end="")
+    if args.report:
+        try:
+            with open(args.report, "w", encoding="utf-8") as f:
+                f.write(report.to_json())
+        except OSError as e:
+            print(f"simwork eval: error: cannot write report: {e}", file=sys.stderr)
+            return 1
+        print(f"Report written to {args.report}")
+    return 0 if report.passed else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -185,6 +230,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_serve(args)
     if args.command == "mock":
         return cmd_mock(args)
+    if args.command == "eval":
+        return cmd_eval(args)
     parser.print_help()
     return 0
 
