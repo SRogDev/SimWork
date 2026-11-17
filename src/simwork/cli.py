@@ -13,6 +13,7 @@ import sys
 import threading
 
 from simwork import __version__
+from simwork.api_mock import ApiMockError, PrismMockServer, fetch_api_spec
 from simwork.llm import ScenarioError
 from simwork.routing import RoutingError, SimWorkRouter, load_config
 
@@ -53,6 +54,39 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="bind port (overrides SIMWORK_PORT, default 0 = ephemeral)",
     )
+
+    mock = sub.add_parser(
+        "mock",
+        help="serve a Prism mock for an API from the APIs.guru catalog",
+        description=(
+            "Fetch an API's OpenAPI spec from APIs.guru (cached under "
+            "~/.cache/simwork) and serve it as a mock with Prism, so a harness "
+            "can call the API without touching the real one. Runs until Ctrl-C. "
+            "$0 — no real world-API calls."
+        ),
+    )
+    mock.add_argument(
+        "--api",
+        metavar="NAME",
+        required=True,
+        help="APIs.guru API name, e.g. github.com (its preferred version is used)",
+    )
+    mock.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="bind host (default 127.0.0.1)",
+    )
+    mock.add_argument(
+        "--port",
+        type=int,
+        default=0,
+        help="bind port (default 0 = ephemeral)",
+    )
+    mock.add_argument(
+        "--cache-dir",
+        default=None,
+        help="cache directory for the catalog + specs (default ~/.cache/simwork)",
+    )
     return parser
 
 
@@ -92,11 +126,38 @@ def cmd_serve(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_mock(args: argparse.Namespace) -> int:
+    """Fetch an API spec from APIs.guru and serve its Prism mock until Ctrl-C."""
+    try:
+        spec_path = fetch_api_spec(args.api, args.cache_dir)
+    except ApiMockError as e:
+        print(f"simwork mock: error: {e}", file=sys.stderr)
+        return 1
+    try:
+        server = PrismMockServer(spec_path, host=args.host, port=args.port)
+        server.start()
+    except ApiMockError as e:
+        print(f"simwork mock: error: {e}", file=sys.stderr)
+        return 1
+    print(f"SimWork API mock running: {args.api} (spec: {spec_path})", flush=True)
+    print(f"API_BASE_URL={server.base_url}", flush=True)
+    print("Press Ctrl-C to stop.", flush=True)
+    try:
+        threading.Event().wait()
+    except KeyboardInterrupt:
+        print("\nStopping API mock.")
+    finally:
+        server.stop()
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     if args.command == "serve":
         return cmd_serve(args)
+    if args.command == "mock":
+        return cmd_mock(args)
     parser.print_help()
     return 0
 

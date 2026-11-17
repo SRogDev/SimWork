@@ -4,7 +4,7 @@ Simulate AI-app functionality first — before spending real LLM or world API ca
 
 SimWork lets a Python developer add simulation to an existing app or harness with minimal setup: every AI call routes to an LLM mock and every API call routes to an API mock. A full simulated run costs **$0 by default**, with zero real network calls to LLM providers or real world APIs.
 
-> **Status: Phase 1 — LLM mock + routing complete (v0.1.0).** Tenro 0.2.3 was evaluated and **not** adopted as the interception layer (it requires decorating the harness, which contradicts the spec's no-rewrite rule — see `docs/tenro-evaluation-2026-11-16.md`). SimWork's own scripted, deterministic fake OpenAI server is in place (`simwork.llm`: `ScriptedLLM` + `FakeOpenAIServer`), scripted turns load from YAML scenario files (`simwork.llm.load_scenario`), and routing is wired: `SIMWORK_MODE=simulate` + a scenario file starts the mock server (`simwork serve` or `SimWorkRouter`), 48 tests. The API mock (Phase 2), DeepEval harness (Phase 3) and `simwork init` + demo (Phase 4) are not built yet. See `docs/` for the spec.
+> **Status: Phase 2 — API mock in progress (v0.1.0).** Tenro 0.2.3 was evaluated and **not** adopted as the interception layer (it requires decorating the harness, which contradicts the spec's no-rewrite rule — see `docs/tenro-evaluation-2026-11-16.md`). SimWork's own scripted, deterministic fake OpenAI server is in place (`simwork.llm`: `ScriptedLLM` + `FakeOpenAIServer`), scripted turns load from YAML scenario files (`simwork.llm.load_scenario`), and routing is wired: `SIMWORK_MODE=simulate` + a scenario file starts the mock server (`simwork serve` or `SimWorkRouter`), 48 tests. `simwork mock --api <name>` now fetches an API's OpenAPI spec from APIs.guru and serves it as a mock with Prism (see below). The stateful stub layer (Phase 2), DeepEval harness (Phase 3) and `simwork init` + demo (Phase 4) are not built yet. See `docs/` for the spec.
 
 ## Quickstart
 
@@ -69,6 +69,18 @@ from simwork.llm import load_scenario
 llm = load_scenario("scenario.yaml").to_llm()  # deterministic ScriptedLLM
 ```
 
+## API mock (`simwork mock`)
+
+Any API in the [APIs.guru](https://apis.guru) catalog (2,529 APIs) can be served as a mock, with no real calls to the real API. Requires Node 18+ and Prism (`npm i -g @stoplight/prism-cli`); the spec is downloaded once and cached under `~/.cache/simwork`.
+
+```bash
+# Serve the httpbin API as a mock (prints the base URL to point at)
+simwork mock --api httpbin.org --port 8124
+# API_BASE_URL=http://127.0.0.1:8124
+```
+
+An unknown API name, a download failure, a missing `prism` binary, or a Prism process that exits early all fail closed with a visible error instead of falling back to the real API. The mock is stateless for now — the stateful stub layer (create-then-read returns the created record) is the next Phase 2 task.
+
 ## The $0 default
 
 In simulate mode SimWork makes zero real calls to LLM providers and zero real calls to world APIs, and fails closed — it errors visibly instead of silently falling back to a real call if a mock is missing.
@@ -79,7 +91,7 @@ In simulate mode SimWork makes zero real calls to LLM providers and zero real ca
 |---|---|---|
 | 0 | Repo foundation: package, CLI, licence, CI | ✅ Done |
 | 1 | LLM mock (OpenAI-compatible, scripted + deterministic) + routing | ✅ Done — Tenro evaluated, not adopted (see `docs/tenro-evaluation-2026-11-16.md`); scripted LLM + fake server + YAML scenarios + routing (`SIMWORK_MODE` / `simwork serve`) landed |
-| 2 | API mock via Prism + APIs.guru, with a stateful stub layer | Planned |
+| 2 | API mock via Prism + APIs.guru, with a stateful stub layer | In progress — `simwork mock --api` landed (fetch from APIs.guru + Prism serve); stateful stubs pending |
 | 3 | DeepEval harness + pass/fail report | Planned |
 | 4 | `simwork init` + pre-made AI configuration prompt + LangGraph demo end-to-end | Planned |
 
