@@ -2,8 +2,8 @@
 
 Phase 1: `serve` starts the fake OpenAI server from a scenario file so
 an unmodified harness can point at it with a base-URL swap. `mock`
-(Phase 2) and `eval` (Phase 3, first slice) are wired; `init` lands in
-Phase 4, per the spec.
+(Phase 2) and `eval` (Phase 3) are wired — `eval --judge` adds the
+opt-in DeepEval judge path; `init` lands in Phase 4, per the spec.
 """
 
 from __future__ import annotations
@@ -15,6 +15,7 @@ import threading
 
 from simwork import __version__
 from simwork.api_mock import ApiMockError, PrismMockServer, fetch_api_spec
+from simwork.deepeval_judge import JudgeError, check_judge_ready, evaluate_run_with_judge
 from simwork.eval import TraceError, evaluate_run, load_trace
 from simwork.llm import ScenarioError
 from simwork.routing import RoutingError, SimWorkRouter, load_config
@@ -101,12 +102,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     eval_cmd = sub.add_parser(
         "eval",
-        help="evaluate a recorded run trace (DeepEval harness, first slice)",
+        help="evaluate a recorded run trace (DeepEval harness)",
         description=(
             "Evaluate a recorded run trace (JSON, see examples/) with the "
             "deterministic metrics tool correctness + task completion and "
             "print a pass/fail report. Exits 0 when the gate passes, 1 when "
-            "it fails. $0 — no LLM judge, no network."
+            "it fails. $0 — no LLM judge, no network. With --judge, also run "
+            "DeepEval's own metric classes (opt-in: needs deepeval installed "
+            "and OPENAI_API_KEY; the task-completion judge makes a real, "
+            "billable model call)."
         ),
     )
     eval_cmd.add_argument(
@@ -120,6 +124,34 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="FILE",
         default=None,
         help="also write the machine-readable JSON report to this file",
+    )
+    eval_cmd.add_argument(
+        "--judge",
+        action="store_true",
+        help=(
+            "also run DeepEval's own judge metrics (opt-in, costs real LLM "
+            "calls for task completion; needs 'simwork[deepeval]' + "
+            "OPENAI_API_KEY)"
+        ),
+    )
+    eval_cmd.add_argument(
+        "--judge-model",
+        metavar="MODEL",
+        default=None,
+        help="model for the DeepEval judge (default: DeepEval's default)",
+    )
+    eval_cmd.add_argument(
+        "--judge-max-calls",
+        metavar="N",
+        type=int,
+        default=1,
+        help="max real LLM calls the judge may make (default 1)",
+    )
+    eval_cmd.add_argument(
+        "--judge-metrics",
+        metavar="NAMES",
+        default="tool_correctness,task_completion",
+        help=("comma-separated judge metrics to run (default: tool_correctness,task_completion)"),
     )
     return parser
 
@@ -204,11 +236,34 @@ def cmd_mock(args: argparse.Namespace) -> int:
 
 
 def cmd_eval(args: argparse.Namespace) -> int:
-    """Evaluate a recorded trace; exit 0 on pass, 1 on fail (or bad trace)."""
+    """Evaluate a recorded trace; exit 0 on pass, 1 on fail (or bad trace).
+
+    With --judge, readiness (deepeval installed, key set, budget covers
+    the work) is checked before the native gate runs, so a judge that
+    cannot run fails fast instead of printing a partial report.
+    """
+    include = tuple(name.strip() for name in (args.judge_metrics or "").split(",") if name.strip())
+    if args.judge:
+        try:
+            check_judge_ready(max_llm_calls=args.judge_max_calls, include=include)
+        except JudgeError as e:
+            print(f"simwork eval: error: {e}", file=sys.stderr)
+            return 1
     try:
         trace = load_trace(args.trace)
-        report = evaluate_run(trace)
+        if args.judge:
+            report = evaluate_run_with_judge(
+                trace,
+                model=args.judge_model,
+                max_llm_calls=args.judge_max_calls,
+                include=include,
+            )
+        else:
+            report = evaluate_run(trace)
     except TraceError as e:
+        print(f"simwork eval: error: {e}", file=sys.stderr)
+        return 1
+    except JudgeError as e:
         print(f"simwork eval: error: {e}", file=sys.stderr)
         return 1
     print(report.to_text(), end="")

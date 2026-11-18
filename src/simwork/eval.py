@@ -12,8 +12,9 @@ SimWork's $0 / no-secrets default), and its ``TaskCompletionMetric`` is
 an LLM judge. The metric names and semantics below match DeepEval's:
 tool correctness is the share of expected tool calls matched exactly
 (name + arguments); task completion is whether the run's final answer
-covers the expected facts. Wiring DeepEval's own classes (pytest-native
-``evaluate()`` / LLM-judge metrics) is a later Phase 3 task, opt-in.
+covers the expected facts. DeepEval's own classes are wired for the
+opt-in judge path in ``simwork.deepeval_judge`` (``simwork eval
+--judge``); the $0 gate here never imports them.
 See ``docs/deepeval-wiring-2026-11-17.md``.
 
 Trace format (JSON, strict — anything invalid fails closed)::

@@ -21,6 +21,13 @@ dev = [
     "ruff>=0.9",
 ]
 
+[project.optional-dependencies]
+# Opt-in only: the $0 default gate never imports deepeval. Install with
+# `uv pip install 'simwork[deepeval]'` for the `simwork eval --judge` path.
+deepeval = [
+    "deepeval>=4.3.4",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

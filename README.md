@@ -4,7 +4,7 @@ Simulate AI-app functionality first — before spending real LLM or world API ca
 
 SimWork lets a Python developer add simulation to an existing app or harness with minimal setup: every AI call routes to an LLM mock and every API call routes to an API mock. A full simulated run costs **$0 by default**, with zero real network calls to LLM providers or real world APIs.
 
-> **Status: Phase 3 — DeepEval harness, trace capture done (v0.1.0).** Tenro 0.2.3 was evaluated and **not** adopted as the interception layer (it requires decorating the harness, which contradicts the spec's no-rewrite rule — see `docs/tenro-evaluation-2026-11-16.md`). SimWork's own scripted, deterministic fake OpenAI server is in place (`simwork.llm`: `ScriptedLLM` + `FakeOpenAIServer`), scripted turns load from YAML scenario files (`simwork.llm.load_scenario`), and routing is wired: `SIMWORK_MODE=simulate` + a scenario file starts the mock server (`simwork serve` or `SimWorkRouter`), 125 tests. `simwork mock --api <name>` fetches an API's OpenAPI spec from APIs.guru and serves it as a mock with Prism, and `simwork mock --stateful` adds the stateful stub layer (create-then-read returns the created record — see below). `simwork eval` evaluates a recorded run trace with the deterministic metrics tool correctness + task completion and prints a pass/fail report, and a `TraceRecorder` (`simwork.trace`) captures such a trace from a real simulated run — assistant steps from the scripted LLM, tool-result steps from the harness executing the tools (see below). DeepEval 4.3.4 was verified: its `ToolCorrectnessMetric` is deterministic and works offline, but its constructor demands an `OPENAI_API_KEY`, so the $0 gate computes the two metrics natively with the same semantics — see `docs/deepeval-wiring-2026-11-17.md`. `simwork init` + demo (Phase 4) are not built yet. See `docs/` for the spec.
+> **Status: Phase 3 — DeepEval harness done (v0.1.0).** Tenro 0.2.3 was evaluated and **not** adopted as the interception layer (it requires decorating the harness, which contradicts the spec's no-rewrite rule — see `docs/tenro-evaluation-2026-11-16.md`). SimWork's own scripted, deterministic fake OpenAI server is in place (`simwork.llm`: `ScriptedLLM` + `FakeOpenAIServer`), scripted turns load from YAML scenario files (`simwork.llm.load_scenario`), and routing is wired: `SIMWORK_MODE=simulate` + a scenario file starts the mock server (`simwork serve` or `SimWorkRouter`), 150 tests. `simwork mock --api <name>` fetches an API's OpenAPI spec from APIs.guru and serves it as a mock with Prism, and `simwork mock --stateful` adds the stateful stub layer (create-then-read returns the created record — see below). `simwork eval` evaluates a recorded run trace with the deterministic metrics tool correctness + task completion and prints a pass/fail report, and a `TraceRecorder` (`simwork.trace`) captures such a trace from a real simulated run — assistant steps from the scripted LLM, tool-result steps from the harness executing the tools (see below). DeepEval 4.3.4 was verified: its `ToolCorrectnessMetric` is deterministic and works offline, but its constructor demands an `OPENAI_API_KEY`, so the $0 gate computes the two metrics natively with the same semantics — and the opt-in judge path (`simwork eval --judge`, `simwork.deepeval_judge`) now wires DeepEval's own classes, off by default, budgeted per run — see `docs/deepeval-wiring-2026-11-17.md`. `simwork init` + demo (Phase 4) are not built yet. See `docs/` for the spec.
 
 ## Quickstart
 
@@ -102,7 +102,22 @@ simwork eval --trace trace.json
 simwork eval --trace trace.json --report report.json
 ```
 
-A trace is a JSON object with `steps` (assistant turns, with `content` and/or `tool_calls`, plus `tool_result` steps) and `expected` (`tool_calls` the run should have made, `final_answer_contains` facts the final answer should cover). Loading is strict: a bad trace fails closed instead of producing a wrong report. The report carries a `trace_hash` (SHA-256 of the canonical trace JSON), so the same seed + same scenario run twice produces an identical report. DeepEval's own metric classes were verified but are not a dependency of this slice — its `ToolCorrectnessMetric` demands an `OPENAI_API_KEY` at construction, which would break the $0 default (see `docs/deepeval-wiring-2026-11-17.md`); LLM-judge metrics stay opt-in for a later slice.
+A trace is a JSON object with `steps` (assistant turns, with `content` and/or `tool_calls`, plus `tool_result` steps) and `expected` (`tool_calls` the run should have made, `final_answer_contains` facts the final answer should cover). Loading is strict: a bad trace fails closed instead of producing a wrong report. The report carries a `trace_hash` (SHA-256 of the canonical trace JSON), so the same seed + same scenario run twice produces an identical report. DeepEval's own metric classes were verified but are not a dependency of the $0 path — its `ToolCorrectnessMetric` demands an `OPENAI_API_KEY` at construction, which would break the $0 default (see `docs/deepeval-wiring-2026-11-17.md`).
+
+### Opt-in DeepEval judge (`simwork eval --judge`)
+
+The judge path wires DeepEval's own classes (`simwork.deepeval_judge`), off by default. It needs the optional dependency plus a key, and the task-completion judge makes a real, billable model call — the tool-correctness judge metric is deterministic and makes no call:
+
+```bash
+uv pip install 'simwork[deepeval]'
+export OPENAI_API_KEY=sk-...          # real key: the judge spends real money
+simwork eval --trace trace.json --judge
+simwork eval --trace trace.json --judge --judge-model gpt-4o-mini --judge-max-calls 1
+# ... judge_tool_correctness: 1.00 (threshold 0.50) PASS — ...
+# ... judge_task_completion: 1.00 (threshold 0.50) PASS — ...
+```
+
+`--judge-max-calls` (default 1) is a per-run budget on real LLM calls: tool correctness costs 0, task completion costs 1, and a run whose judge work exceeds the budget fails closed before any call. `--judge-metrics tool_correctness` runs only the deterministic metric (a dummy key suffices for that one). Judge scores are LLM-generated, so a judged report is not reproducible run-to-run — the trace hash is unchanged, only the judge scores vary. In pytest, `trace_to_test_case` + `judge_metrics` let you call DeepEval's own `evaluate()` / `assert_test` directly (see `simwork.deepeval_judge`).
 
 ### Recording a trace from a simulated run
 
@@ -141,7 +156,7 @@ In simulate mode SimWork makes zero real calls to LLM providers and zero real ca
 | 0 | Repo foundation: package, CLI, licence, CI | ✅ Done |
 | 1 | LLM mock (OpenAI-compatible, scripted + deterministic) + routing | ✅ Done — Tenro evaluated, not adopted (see `docs/tenro-evaluation-2026-11-16.md`); scripted LLM + fake server + YAML scenarios + routing (`SIMWORK_MODE` / `simwork serve`) landed |
 | 2 | API mock via Prism + APIs.guru, with a stateful stub layer | ✅ Done — `simwork mock --api` (fetch from APIs.guru + Prism serve) and `--stateful` (create-then-read via a proxy in front of Prism, `simwork.stateful`) landed |
-| 3 | DeepEval harness + pass/fail report | First slice done — `simwork eval` over a recorded trace (tool correctness + task completion, deterministic, $0); trace capture done — `TraceRecorder` records a trace from a real simulated run, feeding straight into `simwork eval`; LLM-judge metrics stay opt-in |
+| 3 | DeepEval harness + pass/fail report | ✅ Done — `simwork eval` over a recorded trace (tool correctness + task completion, deterministic, $0); trace capture done — `TraceRecorder` records a trace from a real simulated run, feeding straight into `simwork eval`; opt-in DeepEval judge wired — `simwork eval --judge` runs the library's own metrics (`simwork[deepeval]`, budgeted, off by default) |
 | 4 | `simwork init` + pre-made AI configuration prompt + LangGraph demo end-to-end | Planned |
 
 Out of scope for v0.1: a managed/hosted service (not designed before 7 days after start), a Rust rewrite, TypeScript harness support, a real LLM judge by default.

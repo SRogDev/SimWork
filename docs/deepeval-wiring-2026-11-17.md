@@ -46,3 +46,52 @@ Rationale:
 - Re-check the constructor behaviour on a newer DeepEval version before
   wiring: if a future version makes the model lazy, the native metrics
   can delegate to the library classes without changing the report shape.
+
+## Phase 3, task 3 — wiring done (2026-11-18)
+
+Re-checked before wiring: **DeepEval 4.3.4 is still the latest release**
+(installed fresh 2026-11-18; no newer version). The constructor still
+demands `OPENAI_API_KEY`, so the native $0 gate stays the default and
+the library is an optional dependency (`simwork[deepeval]`).
+
+Two things the first verification missed, found by reading the library
+source after a wrong-arguments case scored 1.0:
+
+- `ToolCorrectnessMetric(should_exact_match=True)` compares tool
+  **names only** unless `ToolCallParams.INPUT_PARAMETERS` is in
+  `evaluation_params`. With that flag, plus `async_mode=False`, the
+  library metric matches SimWork's native metric exactly (name +
+  arguments, order-sensitive, same empty-case behaviour), works offline
+  with a dummy key, and makes no network call (a real call with a dummy
+  key would fail auth — a returned score proves no call happened).
+- `TaskCompletionMetric` is an LLM judge (default model `gpt-5.4` in
+  4.3.4); `task=None` falls back to the test case's `input`, so SimWork
+  passes the run's task text (run id + expected facts) as `input`.
+
+Wiring (`simwork/deepeval_judge.py`, `simwork eval --judge`):
+
+- `trace_to_test_case` converts a SimWork trace to a DeepEval
+  `LLMTestCase`; `judge_metrics` builds the library metric objects,
+  so a pytest file can call DeepEval's own `evaluate()` /
+  `assert_test` directly.
+- `run_judge` / `evaluate_run_with_judge` append
+  `judge_tool_correctness` / `judge_task_completion` to SimWork's
+  report shape; the trace hash is unchanged, so a judged report stays
+  comparable to a $0 report of the same trace.
+- Budget: `max_llm_calls` counts real model calls (tool correctness 0,
+  task completion 1; default 1). A run whose judge work exceeds the
+  budget fails closed before any call. Missing deepeval, missing key,
+  or unknown metric name all fail closed with a clear error.
+- Judge thresholds default to DeepEval's own 0.5 (the native gate's
+  strict 1.0 does not apply to fuzzy judge scores).
+
+Evidence: pytest 150/150 in the project venv (2 real-library tests
+skipped — deepeval not installed, by design); with deepeval 4.3.4
+installed in a scratch venv the same file runs 25 passed / 2 skipped,
+including the real-library checks that the library tool-correctness
+metric scores 1.0 on the example trace and 0.0 on wrong arguments,
+offline, dummy key. Live CLI: `simwork eval --judge` without deepeval
+exits 1 with install guidance; with deepeval + dummy key and
+`--judge-metrics tool_correctness` it reports
+`judge_tool_correctness: 1.00 PASS` with the same trace hash
+`b0122a56…` as the $0 report.
