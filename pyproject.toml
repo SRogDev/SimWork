@@ -16,6 +16,11 @@ dependencies = [
 simwork = "simwork.cli:main"
 
 [dependency-groups]
+demo = [
+    "httpx>=0.28.1",
+    "langchain-openai>=1.8.2",
+    "langgraph>=1.2.22",
+]
 dev = [
     "pytest>=8",
     "ruff>=0.9",

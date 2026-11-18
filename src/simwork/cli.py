@@ -4,19 +4,22 @@ Phase 1: `serve` starts the fake OpenAI server from a scenario file so
 an unmodified harness can point at it with a base-URL swap. `mock`
 (Phase 2) and `eval` (Phase 3) are wired — `eval --judge` adds the
 opt-in DeepEval judge path; `init` lands in Phase 4, per the spec.
+`demo` (Phase 4, task 3) runs the LangGraph demo end-to-end.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 
 from simwork import __version__
 from simwork.api_mock import ApiMockError, ApiMockStack
 from simwork.deepeval_judge import JudgeError, check_judge_ready, evaluate_run_with_judge
+from simwork.demo import DemoError, run_demo
 from simwork.eval import evaluate_run
-from simwork.trace import TraceError, load_trace
+from simwork.trace import TraceError, load_trace, trace_hash
 from simwork.init import InitError, init_project
 from simwork.llm import ScenarioError
 from simwork.routing import RoutingError, SimWorkRouter, load_config
@@ -180,6 +183,32 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="overwrite files owned by init if they already exist",
     )
+
+    demo_cmd = sub.add_parser(
+        "demo",
+        help="run the LangGraph demo end-to-end (simulate mode)",
+        description=(
+            "Run the LangGraph demo agent end-to-end in simulate mode: "
+            "one LLM call to the scripted fake OpenAI server, one world-API "
+            "call to a Prism mock of the bundled ticket API, then the $0 eval "
+            "gate on the recorded trace. Prints the pass/fail report and the "
+            "trace hash; exits 0 when the gate passes, 1 when it fails. "
+            "Needs the demo dependencies (`uv sync --group demo`) and the "
+            "`prism` binary. $0 — no real LLM or world-API calls."
+        ),
+    )
+    demo_cmd.add_argument(
+        "--trace",
+        metavar="FILE",
+        default=None,
+        help="also write the recorded trace as JSON to this file",
+    )
+    demo_cmd.add_argument(
+        "--report",
+        metavar="FILE",
+        default=None,
+        help="also write the machine-readable JSON report to this file",
+    )
     return parser
 
 
@@ -310,6 +339,35 @@ def cmd_init(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_demo(args: argparse.Namespace) -> int:
+    """Run the LangGraph demo; print the report; exit on the gate."""
+    try:
+        trace, report = run_demo()
+    except DemoError as e:
+        print(f"simwork demo: error: {e}", file=sys.stderr)
+        return 1
+    print(report.to_text(), end="")
+    print(f"Trace hash: {trace_hash(trace)}")
+    if args.trace:
+        try:
+            with open(args.trace, "w", encoding="utf-8") as f:
+                json.dump(trace, f, indent=2, sort_keys=True)
+                f.write("\n")
+        except OSError as e:
+            print(f"simwork demo: error: cannot write trace: {e}", file=sys.stderr)
+            return 1
+        print(f"Trace written to {args.trace}")
+    if args.report:
+        try:
+            with open(args.report, "w", encoding="utf-8") as f:
+                f.write(report.to_json())
+        except OSError as e:
+            print(f"simwork demo: error: cannot write report: {e}", file=sys.stderr)
+            return 1
+        print(f"Report written to {args.report}")
+    return 0 if report.passed else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -321,6 +379,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_eval(args)
     if args.command == "init":
         return cmd_init(args)
+    if args.command == "demo":
+        return cmd_demo(args)
     parser.print_help()
     return 0
 
