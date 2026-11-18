@@ -12,29 +12,19 @@ from __future__ import annotations
 import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import TYPE_CHECKING
 
 from simwork.llm.scripted import ScriptedLLM, ScriptExhaustedError
 
-if TYPE_CHECKING:
-    from simwork.trace import TraceRecorder
-
 
 class FakeOpenAIServer:
-    """Serves a scripted LLM at ``{base_url}/v1/chat/completions``."""
+    """Serves a scripted LLM at ``{base_url}/v1/chat/completions``.
 
-    def __init__(
-        self,
-        script: list[dict],
-        *,
-        seed: int = 0,
-        model: str = "simwork-mock",
-        host: str = "127.0.0.1",
-        port: int = 0,
-        recorder: TraceRecorder | None = None,
-    ):
-        self.llm = ScriptedLLM(script, seed=seed, model=model, recorder=recorder)
-        self.recorder = recorder
+    The server takes the LLM it serves — built by the caller, usually
+    via `Scenario.to_llm()` — instead of building one from raw turns.
+    """
+
+    def __init__(self, llm: ScriptedLLM, *, host: str = "127.0.0.1", port: int = 0):
+        self.llm = llm
         self.host = host
         self.port = port
         self._httpd: ThreadingHTTPServer | None = None

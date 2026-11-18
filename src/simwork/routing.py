@@ -110,12 +110,9 @@ class SimWorkRouter:
         assert self.config.scenario_path is not None  # guaranteed by load_config
         scenario = load_scenario(self.config.scenario_path)
         self._server = FakeOpenAIServer(
-            scenario.turns,
-            seed=scenario.seed,
-            model=scenario.model,
+            scenario.to_llm(recorder=self.recorder),
             host=self.config.host,
             port=self.config.port,
-            recorder=self.recorder,
         ).start()
         return self
 

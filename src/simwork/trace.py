@@ -33,7 +33,8 @@ Trace format (JSON, strict — anything invalid fails closed)::
 - `TraceRecorder` captures a trace from a real simulated run:
   assistant steps come from the completions the scripted LLM returns
   (`record_completion`, or automatically when the recorder is handed
-  to `ScriptedLLM` / `SimWorkRouter`), and tool-result steps come from
+  to `ScriptedLLM` — directly, or via `Scenario.to_llm()` /
+  `SimWorkRouter`), and tool-result steps come from the harness executing
   the harness executing the tools the LLM asked for
   (`record_tool_result`).
 - `simwork.eval` evaluates a trace with the $0 metrics; it never

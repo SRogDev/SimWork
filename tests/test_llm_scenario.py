@@ -66,6 +66,22 @@ def test_loaded_scenario_replays_deterministically(tmp_path: Path) -> None:
     ]
 
 
+def test_to_llm_passes_recorder_to_the_llm(tmp_path: Path) -> None:
+    """The recorder reaches the LLM through the scenario, not the server.
+
+    A server built from this LLM records the run; the server itself
+    takes no recorder anymore (candidate 5).
+    """
+    from simwork.trace import TraceRecorder
+
+    recorder = TraceRecorder(run_id="r", seed=7)
+    llm = load_scenario(_write(tmp_path, VALID_YAML)).to_llm(recorder=recorder)
+    llm.complete(MESSAGES)
+    assert recorder.to_trace()["steps"] == [
+        {"type": "assistant", "content": "I will check the ticket."}
+    ]
+
+
 def test_missing_file_fails_closed(tmp_path: Path) -> None:
     with pytest.raises(ScenarioError):
         load_scenario(tmp_path / "no-such-file.yaml")

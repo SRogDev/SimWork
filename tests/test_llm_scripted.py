@@ -84,7 +84,7 @@ def _post(base_url: str, path: str, payload: dict) -> tuple[int, dict]:
 
 
 def test_server_serves_openai_shaped_completion() -> None:
-    with FakeOpenAIServer(SCRIPT, seed=7).start() as server:
+    with FakeOpenAIServer(ScriptedLLM(SCRIPT, seed=7)).start() as server:
         status, body = _post(
             server.base_url,
             "/chat/completions",
@@ -105,7 +105,7 @@ def test_server_serves_openai_shaped_completion() -> None:
 
 
 def test_server_rejects_unknown_paths() -> None:
-    with FakeOpenAIServer(SCRIPT, seed=7).start() as server:
+    with FakeOpenAIServer(ScriptedLLM(SCRIPT, seed=7)).start() as server:
         status, _ = _post(
             server.base_url, "/v1/other", {"model": "gpt-4o-mini", "messages": MESSAGES}
         )
@@ -113,7 +113,7 @@ def test_server_rejects_unknown_paths() -> None:
 
 
 def test_server_exhausted_script_is_a_visible_error() -> None:
-    with FakeOpenAIServer(SCRIPT[:1], seed=7).start() as server:
+    with FakeOpenAIServer(ScriptedLLM(SCRIPT[:1], seed=7)).start() as server:
         _post(server.base_url, "/chat/completions", {"model": "x", "messages": MESSAGES})
         status, body = _post(
             server.base_url, "/chat/completions", {"model": "x", "messages": MESSAGES}

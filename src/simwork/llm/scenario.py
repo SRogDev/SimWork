@@ -24,11 +24,14 @@ from __future__ import annotations
 import copy
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import yaml
 
 from simwork.llm.scripted import ScriptedLLM
+
+if TYPE_CHECKING:
+    from simwork.trace import TraceRecorder
 
 _DEFAULT_MODEL = "simwork-mock"
 _TOP_LEVEL_KEYS = {"name", "seed", "model", "turns"}
@@ -48,9 +51,16 @@ class Scenario:
     seed: int = 0
     model: str = _DEFAULT_MODEL
 
-    def to_llm(self) -> ScriptedLLM:
-        """Build the deterministic scripted LLM for this scenario."""
-        return ScriptedLLM(copy.deepcopy(self.turns), seed=self.seed, model=self.model)
+    def to_llm(self, recorder: TraceRecorder | None = None) -> ScriptedLLM:
+        """Build the deterministic scripted LLM for this scenario.
+
+        A recorder handed here is recorded by the LLM itself, so a
+        server built from this LLM captures the run without the server
+        needing to know about recording.
+        """
+        return ScriptedLLM(
+            copy.deepcopy(self.turns), seed=self.seed, model=self.model, recorder=recorder
+        )
 
 
 def load_scenario(path: str | Path) -> Scenario:

@@ -224,7 +224,7 @@ def test_scripted_llm_records_each_turn_when_given_a_recorder() -> None:
 
 def test_fake_server_records_completions_over_http() -> None:
     recorder = TraceRecorder(run_id="r", seed=7)
-    with FakeOpenAIServer(SCRIPT, seed=7, recorder=recorder).start() as server:
+    with FakeOpenAIServer(ScriptedLLM(SCRIPT, seed=7, recorder=recorder)).start() as server:
         req = urllib.request.Request(
             f"{server.base_url}/chat/completions",
             data=json.dumps({"model": "x", "messages": MESSAGES}).encode(),
