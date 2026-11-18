@@ -11,6 +11,7 @@ from simwork.deepeval_judge import (
     trace_to_test_case,
 )
 from simwork.eval import EvalReport, MetricResult, TraceError, evaluate_run, load_trace
+from simwork.init import InitError, init_project
 from simwork.routing import RoutingError, SimWorkConfig, SimWorkRouter, load_config
 from simwork.trace import TraceRecorder, completion_to_step
 
@@ -19,6 +20,7 @@ __version__ = "0.1.0"
 __all__ = [
     "ApiMockError",
     "EvalReport",
+    "InitError",
     "JudgeError",
     "MetricResult",
     "PrismMockServer",
@@ -34,6 +36,7 @@ __all__ = [
     "evaluate_run",
     "evaluate_run_with_judge",
     "fetch_api_spec",
+    "init_project",
     "judge_metrics",
     "load_config",
     "load_trace",

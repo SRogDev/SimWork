@@ -17,6 +17,7 @@ from simwork import __version__
 from simwork.api_mock import ApiMockError, PrismMockServer, fetch_api_spec
 from simwork.deepeval_judge import JudgeError, check_judge_ready, evaluate_run_with_judge
 from simwork.eval import TraceError, evaluate_run, load_trace
+from simwork.init import InitError, init_project
 from simwork.llm import ScenarioError
 from simwork.routing import RoutingError, SimWorkRouter, load_config
 from simwork.stateful import StatefulStubServer
@@ -153,6 +154,31 @@ def build_parser() -> argparse.ArgumentParser:
         default="tool_correctness,task_completion",
         help=("comma-separated judge metrics to run (default: tool_correctness,task_completion)"),
     )
+
+    init_cmd = sub.add_parser(
+        "init",
+        help="scaffold a working SimWork starter in a directory",
+        description=(
+            "Generate a working starter in a directory: simwork.yaml config, "
+            "a YAML scenario for the scripted LLM, and an eval suite (a "
+            "recorded trace + a pytest file that gates on it), plus a starter "
+            "README. The generated scenario parses and the trace passes the "
+            "$0 eval gate before anything is written. Existing files owned "
+            "by init are only overwritten with --force; other files in the "
+            "directory are never touched."
+        ),
+    )
+    init_cmd.add_argument(
+        "directory",
+        nargs="?",
+        default=".",
+        help="target directory (default: current directory; created if missing)",
+    )
+    init_cmd.add_argument(
+        "--force",
+        action="store_true",
+        help="overwrite files owned by init if they already exist",
+    )
     return parser
 
 
@@ -278,6 +304,23 @@ def cmd_eval(args: argparse.Namespace) -> int:
     return 0 if report.passed else 1
 
 
+def cmd_init(args: argparse.Namespace) -> int:
+    """Scaffold the starter; print the files created and the next steps."""
+    try:
+        created = init_project(args.directory, force=args.force)
+    except InitError as e:
+        print(f"simwork init: error: {e}", file=sys.stderr)
+        return 1
+    print("SimWork starter created:")
+    for path in created:
+        print(f"  {path}")
+    print("Next steps:")
+    print("  simwork serve --scenario scenarios/ticket-status.yaml")
+    print("  pytest")
+    print("  simwork eval --trace evals/ticket-status-trace.json")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -287,6 +330,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_mock(args)
     if args.command == "eval":
         return cmd_eval(args)
+    if args.command == "init":
+        return cmd_init(args)
     parser.print_help()
     return 0
 

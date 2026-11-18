@@ -4,7 +4,7 @@ Simulate AI-app functionality first — before spending real LLM or world API ca
 
 SimWork lets a Python developer add simulation to an existing app or harness with minimal setup: every AI call routes to an LLM mock and every API call routes to an API mock. A full simulated run costs **$0 by default**, with zero real network calls to LLM providers or real world APIs.
 
-> **Status: Phase 3 — DeepEval harness done (v0.1.0).** Tenro 0.2.3 was evaluated and **not** adopted as the interception layer (it requires decorating the harness, which contradicts the spec's no-rewrite rule — see `docs/tenro-evaluation-2026-11-16.md`). SimWork's own scripted, deterministic fake OpenAI server is in place (`simwork.llm`: `ScriptedLLM` + `FakeOpenAIServer`), scripted turns load from YAML scenario files (`simwork.llm.load_scenario`), and routing is wired: `SIMWORK_MODE=simulate` + a scenario file starts the mock server (`simwork serve` or `SimWorkRouter`), 150 tests. `simwork mock --api <name>` fetches an API's OpenAPI spec from APIs.guru and serves it as a mock with Prism, and `simwork mock --stateful` adds the stateful stub layer (create-then-read returns the created record — see below). `simwork eval` evaluates a recorded run trace with the deterministic metrics tool correctness + task completion and prints a pass/fail report, and a `TraceRecorder` (`simwork.trace`) captures such a trace from a real simulated run — assistant steps from the scripted LLM, tool-result steps from the harness executing the tools (see below). DeepEval 4.3.4 was verified: its `ToolCorrectnessMetric` is deterministic and works offline, but its constructor demands an `OPENAI_API_KEY`, so the $0 gate computes the two metrics natively with the same semantics — and the opt-in judge path (`simwork eval --judge`, `simwork.deepeval_judge`) now wires DeepEval's own classes, off by default, budgeted per run — see `docs/deepeval-wiring-2026-11-17.md`. `simwork init` + demo (Phase 4) are not built yet. See `docs/` for the spec.
+> **Status: Phase 4 — `simwork init` landed (v0.1.0).** Tenro 0.2.3 was evaluated and **not** adopted as the interception layer (it requires decorating the harness, which contradicts the spec's no-rewrite rule — see `docs/tenro-evaluation-2026-11-16.md`). SimWork's own scripted, deterministic fake OpenAI server is in place (`simwork.llm`: `ScriptedLLM` + `FakeOpenAIServer`), scripted turns load from YAML scenario files (`simwork.llm.load_scenario`), and routing is wired: `SIMWORK_MODE=simulate` + a scenario file starts the mock server (`simwork serve` or `SimWorkRouter`), 165 tests. `simwork mock --api <name>` fetches an API's OpenAPI spec from APIs.guru and serves it as a mock with Prism, and `simwork mock --stateful` adds the stateful stub layer (create-then-read returns the created record — see below). `simwork eval` evaluates a recorded run trace with the deterministic metrics tool correctness + task completion and prints a pass/fail report, and a `TraceRecorder` (`simwork.trace`) captures such a trace from a real simulated run — assistant steps from the scripted LLM, tool-result steps from the harness executing the tools (see below). DeepEval 4.3.4 was verified: its `ToolCorrectnessMetric` is deterministic and works offline, but its constructor demands an `OPENAI_API_KEY`, so the $0 gate computes the two metrics natively with the same semantics — and the opt-in judge path (`simwork eval --judge`, `simwork.deepeval_judge`) now wires DeepEval's own classes, off by default, budgeted per run — see `docs/deepeval-wiring-2026-11-17.md`. `simwork init` scaffolds a working starter (config + scenario + eval suite — see below); the pre-made AI configuration prompt and the LangGraph demo are the remaining Phase 4 slices. See `docs/` for the spec.
 
 ## Quickstart
 
@@ -15,6 +15,20 @@ uv run pytest
 ```
 
 Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/).
+
+## `simwork init` — the starter
+
+Scaffold a working starter in a directory (your project dir, or a fresh one):
+
+```bash
+simwork init my-app        # creates my-app/; defaults to the current directory
+cd my-app
+simwork serve --scenario scenarios/ticket-status.yaml   # fake OpenAI server
+pytest                                                 # the eval suite passes
+simwork eval --trace evals/ticket-status-trace.json    # the same gate, directly
+```
+
+It generates `simwork.yaml` (config: simulate mode, scenario + eval paths), `scenarios/ticket-status.yaml` (scripted LLM turns), `evals/ticket-status-trace.json` (the recorded trace of that run) and `tests/test_simwork_eval.py` (a pytest file that gates the trace on tool correctness + task completion), plus a starter README. The scenario parses and the trace passes the $0 gate before anything is written, so `init` can never scaffold a broken starter. Existing files owned by `init` are only overwritten with `--force`; other files in the directory — your harness — are never touched.
 
 ## Routing (`SIMWORK_MODE=simulate`)
 
@@ -157,7 +171,7 @@ In simulate mode SimWork makes zero real calls to LLM providers and zero real ca
 | 1 | LLM mock (OpenAI-compatible, scripted + deterministic) + routing | ✅ Done — Tenro evaluated, not adopted (see `docs/tenro-evaluation-2026-11-16.md`); scripted LLM + fake server + YAML scenarios + routing (`SIMWORK_MODE` / `simwork serve`) landed |
 | 2 | API mock via Prism + APIs.guru, with a stateful stub layer | ✅ Done — `simwork mock --api` (fetch from APIs.guru + Prism serve) and `--stateful` (create-then-read via a proxy in front of Prism, `simwork.stateful`) landed |
 | 3 | DeepEval harness + pass/fail report | ✅ Done — `simwork eval` over a recorded trace (tool correctness + task completion, deterministic, $0); trace capture done — `TraceRecorder` records a trace from a real simulated run, feeding straight into `simwork eval`; opt-in DeepEval judge wired — `simwork eval --judge` runs the library's own metrics (`simwork[deepeval]`, budgeted, off by default) |
-| 4 | `simwork init` + pre-made AI configuration prompt + LangGraph demo end-to-end | Planned |
+| 4 | `simwork init` + pre-made AI configuration prompt + LangGraph demo end-to-end | In progress — `simwork init` scaffolding landed (config + scenario + eval suite); prompt + demo remain |
 
 Out of scope for v0.1: a managed/hosted service (not designed before 7 days after start), a Rust rewrite, TypeScript harness support, a real LLM judge by default.
 
