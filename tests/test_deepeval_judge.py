@@ -291,6 +291,25 @@ def test_judge_metrics_include_selects_subset(fake_deepeval):
     assert len(judge_metrics(include=("task_completion",))) == 1
 
 
+def test_judge_metrics_respects_include_order(fake_deepeval):
+    """Metrics must come back in the caller's include order, not a fixed one.
+
+    `run_judge` pairs names with metrics by position, so a fixed order
+    here mislabels the scores (the --judge-metrics ordering bug).
+    """
+    metrics = judge_metrics(include=("task_completion", "tool_correctness"))
+    assert isinstance(metrics[0], _FakeTaskCompletionMetric)
+    assert isinstance(metrics[1], _FakeToolCorrectnessMetric)
+
+
+def test_run_judge_respects_include_order(fake_deepeval, dummy_key):
+    _FakeTaskCompletionMetric.next_score = 0.8
+    results = run_judge(PASSING_TRACE, include=("task_completion", "tool_correctness"))
+    assert [r.name for r in results] == ["judge_task_completion", "judge_tool_correctness"]
+    assert results[0].score == 0.8  # the judge's score, on the judge's name
+    assert results[1].score == 1.0  # the exact-match tool score, on its name
+
+
 def test_judge_metrics_rejects_unknown_name(fake_deepeval):
     with pytest.raises(JudgeError, match="unknown judge metric"):
         judge_metrics(include=("bogus",))

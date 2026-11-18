@@ -48,12 +48,16 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 _DEFAULT_THRESHOLD = 1.0
-_METRIC_NAMES = ("tool_correctness", "task_completion")
+# The metric names, shared with the opt-in judge adapter
+# (`simwork.deepeval_judge`): one source of truth for both adapters, so
+# a metric cannot be spelled one way natively and another by the judge.
+METRIC_NAMES = ("tool_correctness", "task_completion")
 _TOP_LEVEL_KEYS = {"run_id", "seed", "steps", "expected"}
 _EXPECTED_KEYS = {"tool_calls", "final_answer_contains"}
 _STEP_TYPES = ("assistant", "tool_result")
@@ -176,6 +180,15 @@ def validate_trace(data: Any, *, source: str = "<trace>") -> dict[str, Any]:
     return data
 
 
+def unknown_metric_names(names: Iterable[str]) -> list[str]:
+    """Names in ``names`` that are not one of ``METRIC_NAMES``.
+
+    Shared with the judge adapter so both adapters reject the same
+    unknown names; each caller raises its own error type.
+    """
+    return [name for name in names if name not in METRIC_NAMES]
+
+
 def evaluate_run(
     trace: dict[str, Any], *, thresholds: dict[str, float] | None = None
 ) -> EvalReport:
@@ -186,7 +199,7 @@ def evaluate_run(
     """
     trace = validate_trace(trace)
     thresholds = thresholds or {}
-    unknown = set(thresholds) - set(_METRIC_NAMES)
+    unknown = unknown_metric_names(thresholds)
     if unknown:
         raise ValueError(f"unknown metric(s) in thresholds: {sorted(unknown)}")
     results = (
@@ -249,7 +262,12 @@ def _tool_correctness(trace: dict[str, Any], threshold: float) -> MetricResult:
     )
 
 
-def _final_answer(trace: dict[str, Any]) -> str:
+def final_answer(trace: dict[str, Any]) -> str:
+    """The run's final answer: the last assistant step's content, or "".
+
+    Shared with the judge adapter, which feeds it to DeepEval as the
+    test case's actual output.
+    """
     for step in reversed(trace["steps"]):
         if step.get("type") == "assistant" and isinstance(step.get("content"), str):
             return step["content"]
@@ -258,7 +276,7 @@ def _final_answer(trace: dict[str, Any]) -> str:
 
 def _task_completion(trace: dict[str, Any], threshold: float) -> MetricResult:
     wanted = trace.get("expected", {}).get("final_answer_contains", [])
-    answer = _final_answer(trace)
+    answer = final_answer(trace)
     missing = [s for s in wanted if s not in answer]
     score = 1.0 if not missing else 0.0
     details = (

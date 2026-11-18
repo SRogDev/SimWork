@@ -54,9 +54,16 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from simwork.eval import EvalReport, MetricResult, _final_answer, evaluate_run, validate_trace
+from simwork.eval import (
+    METRIC_NAMES,
+    EvalReport,
+    MetricResult,
+    evaluate_run,
+    final_answer,
+    unknown_metric_names,
+    validate_trace,
+)
 
-_JUDGE_METRIC_NAMES = ("tool_correctness", "task_completion")
 # LLM calls per judge metric: exact-match tool correctness is deterministic
 # (async_mode=False, verified offline); task completion is an LLM judge.
 _LLM_CALLS_PER_METRIC = {"tool_correctness": 0, "task_completion": 1}
@@ -92,11 +99,10 @@ def _load_deepeval() -> tuple[Any, Any, Any, Any, Any]:
 
 
 def _validate_include(include: tuple[str, ...] | list[str]) -> tuple[str, ...]:
-    unknown = [name for name in include if name not in _JUDGE_METRIC_NAMES]
+    unknown = unknown_metric_names(include)
     if unknown:
         raise JudgeError(
-            f"unknown judge metric(s): {sorted(unknown)} "
-            f"(choose from: {', '.join(_JUDGE_METRIC_NAMES)})"
+            f"unknown judge metric(s): {sorted(unknown)} (choose from: {', '.join(METRIC_NAMES)})"
         )
     return tuple(include)
 
@@ -118,7 +124,7 @@ def trace_to_test_case(trace: dict[str, Any]) -> Any:
     expected_calls = trace.get("expected", {}).get("tool_calls", [])
     return LLMTestCase(
         input=_task_text(trace),
-        actual_output=_final_answer(trace),
+        actual_output=final_answer(trace),
         tools_called=[
             ToolCall(name=c["name"], input_parameters=c.get("arguments", {})) for c in actual_calls
         ],
@@ -133,7 +139,7 @@ def judge_metrics(
     *,
     model: str | None = None,
     thresholds: dict[str, float] | None = None,
-    include: tuple[str, ...] | list[str] = _JUDGE_METRIC_NAMES,
+    include: tuple[str, ...] | list[str] = METRIC_NAMES,
 ) -> list[Any]:
     """Build DeepEval's metric objects for the requested judge metrics.
 
@@ -141,38 +147,36 @@ def judge_metrics(
     ``gpt-5.4`` in 4.3.4 — a real, billable model for the judge). The
     tool-correctness metric is built deterministic: exact match, input
     parameters compared, sync mode — it makes no model call.
+
+    Metrics come back in the caller's ``include`` order, so `run_judge`
+    can pair each result with its name by position.
     """
     _, _, ToolCallParams, ToolCorrectnessMetric, TaskCompletionMetric = _load_deepeval()
     include = _validate_include(include)
     thresholds = thresholds or {}
-    unknown = [name for name in thresholds if name not in _JUDGE_METRIC_NAMES]
+    unknown = unknown_metric_names(thresholds)
     if unknown:
         raise JudgeError(f"unknown metric(s) in thresholds: {sorted(unknown)}")
-    metrics: list[Any] = []
-    if "tool_correctness" in include:
-        metrics.append(
-            ToolCorrectnessMetric(
-                threshold=thresholds.get("tool_correctness", _DEFAULT_JUDGE_THRESHOLD),
-                should_exact_match=True,
-                evaluation_params=[ToolCallParams.INPUT_PARAMETERS],
-                async_mode=False,
-                model=model,
-            )
-        )
-    if "task_completion" in include:
-        metrics.append(
-            TaskCompletionMetric(
-                threshold=thresholds.get("task_completion", _DEFAULT_JUDGE_THRESHOLD),
-                model=model,
-            )
-        )
-    return metrics
+    builders = {
+        "tool_correctness": lambda: ToolCorrectnessMetric(
+            threshold=thresholds.get("tool_correctness", _DEFAULT_JUDGE_THRESHOLD),
+            should_exact_match=True,
+            evaluation_params=[ToolCallParams.INPUT_PARAMETERS],
+            async_mode=False,
+            model=model,
+        ),
+        "task_completion": lambda: TaskCompletionMetric(
+            threshold=thresholds.get("task_completion", _DEFAULT_JUDGE_THRESHOLD),
+            model=model,
+        ),
+    }
+    return [builders[name]() for name in include]
 
 
 def check_judge_ready(
     *,
     max_llm_calls: int = 1,
-    include: tuple[str, ...] | list[str] = _JUDGE_METRIC_NAMES,
+    include: tuple[str, ...] | list[str] = METRIC_NAMES,
 ) -> None:
     """Fail closed before any judge work: dep installed, key set, budget ok."""
     _load_deepeval()
@@ -201,7 +205,7 @@ def run_judge(
     model: str | None = None,
     max_llm_calls: int = 1,
     thresholds: dict[str, float] | None = None,
-    include: tuple[str, ...] | list[str] = _JUDGE_METRIC_NAMES,
+    include: tuple[str, ...] | list[str] = METRIC_NAMES,
 ) -> tuple[MetricResult, ...]:
     """Run DeepEval's judge metrics over a trace; returns judge results.
 
@@ -240,7 +244,7 @@ def evaluate_run_with_judge(
     max_llm_calls: int = 1,
     thresholds: dict[str, float] | None = None,
     judge_thresholds: dict[str, float] | None = None,
-    include: tuple[str, ...] | list[str] = _JUDGE_METRIC_NAMES,
+    include: tuple[str, ...] | list[str] = METRIC_NAMES,
 ) -> EvalReport:
     """Native $0 gate + opt-in DeepEval judge metrics, one combined report.
 

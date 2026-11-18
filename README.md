@@ -131,7 +131,7 @@ simwork eval --trace trace.json --judge --judge-model gpt-4o-mini --judge-max-ca
 # ... judge_task_completion: 1.00 (threshold 0.50) PASS — ...
 ```
 
-`--judge-max-calls` (default 1) is a per-run budget on real LLM calls: tool correctness costs 0, task completion costs 1, and a run whose judge work exceeds the budget fails closed before any call. `--judge-metrics tool_correctness` runs only the deterministic metric (a dummy key suffices for that one). Judge scores are LLM-generated, so a judged report is not reproducible run-to-run — the trace hash is unchanged, only the judge scores vary. In pytest, `trace_to_test_case` + `judge_metrics` let you call DeepEval's own `evaluate()` / `assert_test` directly (see `simwork.deepeval_judge`).
+`--judge-max-calls` (default 1) is a per-run budget on real LLM calls: tool correctness costs 0, task completion costs 1, and a run whose judge work exceeds the budget fails closed before any call. `--judge-metrics tool_correctness` runs only the deterministic metric (a dummy key suffices for that one). The metrics come back in the order `--judge-metrics` lists them — an earlier build mislabelled the scores when the order differed (fixed 2026-11-18; both adapters now share one metric-name list in `simwork.eval`). Judge scores are LLM-generated, so a judged report is not reproducible run-to-run — the trace hash is unchanged, only the judge scores vary. In pytest, `trace_to_test_case` + `judge_metrics` let you call DeepEval's own `evaluate()` / `assert_test` directly (see `simwork.deepeval_judge`).
 
 ### Recording a trace from a simulated run
 
