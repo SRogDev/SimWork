@@ -279,7 +279,7 @@ def _mocked_servers(monkeypatch):
     )
     monkeypatch.setattr("simwork.api_mock.PrismMockServer", _FakePrism)
     monkeypatch.setattr("simwork.api_mock.StatefulStubServer", _FakeProxy)
-    monkeypatch.setattr("simwork.cli.threading.Event", lambda: _ImmediateCtrlC())
+    monkeypatch.setattr("simwork.serving.threading.Event", lambda: _ImmediateCtrlC())
     return _FakePrism, _FakeProxy
 
 

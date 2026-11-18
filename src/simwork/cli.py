@@ -11,7 +11,6 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-import threading
 
 from simwork import __version__
 from simwork.api_mock import ApiMockError, ApiMockStack
@@ -21,6 +20,7 @@ from simwork.trace import TraceError, load_trace
 from simwork.init import InitError, init_project
 from simwork.llm import ScenarioError
 from simwork.routing import RoutingError, SimWorkRouter, load_config
+from simwork.serving import serve
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -198,23 +198,18 @@ def cmd_serve(args: argparse.Namespace) -> int:
     except (RoutingError, ValueError) as e:
         print(f"simwork serve: error: {e}", file=sys.stderr)
         return 1
+
+    def banner(router: SimWorkRouter) -> list[str]:
+        return [
+            f"SimWork fake OpenAI server running (scenario: {config.scenario_path})",
+            *(f"{key}={value}" for key, value in router.env_overrides.items()),
+        ]
+
     try:
-        router = SimWorkRouter(config)
-        router.__enter__()
+        serve(SimWorkRouter(config), banner=banner, stopping="Stopping fake OpenAI server.")
     except ScenarioError as e:
         print(f"simwork serve: error: {e}", file=sys.stderr)
         return 1
-    assert router.base_url is not None
-    print(f"SimWork fake OpenAI server running (scenario: {config.scenario_path})", flush=True)
-    for key, value in router.env_overrides.items():
-        print(f"{key}={value}", flush=True)
-    print("Press Ctrl-C to stop.", flush=True)
-    try:
-        threading.Event().wait()
-    except KeyboardInterrupt:
-        print("\nStopping fake OpenAI server.")
-    finally:
-        router.stop()
     return 0
 
 
@@ -226,27 +221,26 @@ def cmd_mock(args: argparse.Namespace) -> int:
     one) so writes are remembered across reads. The whole stack is one
     `ApiMockStack` — the CLI only prints the banner and waits.
     """
-    stack = ApiMockStack(
-        args.api,
-        host=args.host,
-        port=args.port,
-        cache_dir=args.cache_dir,
-        stateful=args.stateful,
-    )
+
+    def banner(stack: ApiMockStack) -> list[str]:
+        lines = [f"SimWork API mock running: {args.api} (spec: {stack.spec_path})"]
+        if args.stateful:
+            lines.append("Stateful stubs on: writes are remembered (create-then-read works).")
+        lines.append(f"API_BASE_URL={stack.base_url}")
+        return lines
+
     try:
-        with stack:
-            print(f"SimWork API mock running: {args.api} (spec: {stack.spec_path})", flush=True)
-            if args.stateful:
-                print(
-                    "Stateful stubs on: writes are remembered (create-then-read works).",
-                    flush=True,
-                )
-            print(f"API_BASE_URL={stack.base_url}", flush=True)
-            print("Press Ctrl-C to stop.", flush=True)
-            try:
-                threading.Event().wait()
-            except KeyboardInterrupt:
-                print("\nStopping API mock.")
+        serve(
+            ApiMockStack(
+                args.api,
+                host=args.host,
+                port=args.port,
+                cache_dir=args.cache_dir,
+                stateful=args.stateful,
+            ),
+            banner=banner,
+            stopping="Stopping API mock.",
+        )
     except ApiMockError as e:
         print(f"simwork mock: error: {e}", file=sys.stderr)
         return 1
