@@ -162,10 +162,11 @@ def build_parser() -> argparse.ArgumentParser:
             "Generate a working starter in a directory: simwork.yaml config, "
             "a YAML scenario for the scripted LLM, and an eval suite (a "
             "recorded trace + a pytest file that gates on it), plus a starter "
-            "README. The generated scenario parses and the trace passes the "
-            "$0 eval gate before anything is written. Existing files owned "
-            "by init are only overwritten with --force; other files in the "
-            "directory are never touched."
+            "README and the pre-made AI configuration prompt "
+            "(prompts/configure-simwork.md). The generated scenario parses "
+            "and the trace passes the $0 eval gate before anything is "
+            "written. Existing files owned by init are only overwritten "
+            "with --force; other files in the directory are never touched."
         ),
     )
     init_cmd.add_argument(
@@ -301,6 +302,8 @@ def cmd_init(args: argparse.Namespace) -> int:
     for path in created:
         print(f"  {path}")
     print("Next steps:")
+    print("  # hand prompts/configure-simwork.md to your AI assistant to wire")
+    print("  # SimWork into your harness, or follow the starter README:")
     print("  simwork serve --scenario scenarios/ticket-status.yaml")
     print("  pytest")
     print("  simwork eval --trace evals/ticket-status-trace.json")

@@ -25,6 +25,7 @@ OWNED_FILES = (
     "evals/ticket-status-trace.json",
     "tests/test_simwork_eval.py",
     "README.md",
+    "prompts/configure-simwork.md",
 )
 
 
@@ -141,6 +142,21 @@ def test_cli_init_help_mentions_init():
     )
     assert result.returncode == 0
     assert "simwork.yaml" in result.stdout
+
+
+def test_init_generated_prompt_matches_repo_prompt(tmp_path):
+    """The starter's prompt must be the repo's pre-made prompt, verbatim."""
+    from simwork.prompt import CONFIGURE_SIMWORK_PROMPT
+
+    init_project(tmp_path)
+    generated = (tmp_path / "prompts" / "configure-simwork.md").read_text(encoding="utf-8")
+    assert generated == CONFIGURE_SIMWORK_PROMPT
+
+
+def test_init_readme_points_at_the_prompt(tmp_path):
+    init_project(tmp_path)
+    readme = (tmp_path / "README.md").read_text(encoding="utf-8")
+    assert "prompts/configure-simwork.md" in readme
 
 
 def test_generated_trace_is_the_example_trace(tmp_path):

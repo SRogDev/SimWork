@@ -13,6 +13,7 @@ from simwork.deepeval_judge import (
 from simwork.eval import EvalReport, MetricResult, evaluate_run
 from simwork.trace import TraceError, load_trace
 from simwork.init import InitError, init_project
+from simwork.prompt import CONFIGURE_SIMWORK_PROMPT, prompt_text
 from simwork.routing import RoutingError, SimWorkConfig, SimWorkRouter, load_config
 from simwork.trace import TraceRecorder, completion_to_step
 
@@ -21,6 +22,7 @@ __version__ = "0.1.0"
 __all__ = [
     "ApiMockError",
     "ApiMockStack",
+    "CONFIGURE_SIMWORK_PROMPT",
     "EvalReport",
     "InitError",
     "JudgeError",
@@ -42,6 +44,7 @@ __all__ = [
     "judge_metrics",
     "load_config",
     "load_trace",
+    "prompt_text",
     "run_judge",
     "trace_to_test_case",
 ]

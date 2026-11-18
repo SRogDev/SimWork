@@ -2,7 +2,7 @@
 
 ## 1. Intent summary
 
-SimWork lets developers like Roger simulate AI-app functionality first, before spending real LLM API calls or touching production. The user adds SimWork to an existing Python app or harness with minimal setup, ideally configured by an AI assistant from a pre-made prompt, and every AI call routes to an LLM mock and every API call routes to an API mock. All runs are evaluated. [S7–S10]
+SimWork lets developers like Roger simulate AI-app functionality first, before spending real LLM API calls or touching production. The user adds SimWork to an existing Python app or harness with minimal setup, ideally configured by an AI assistant from a pre-made prompt, and every AI call routes to an LLM mock and every API call routes to an API mock. All runs are evaluated. [S7–S10] The first use case is Polygrow: thousands of simulated runs and tests before launch, to know how good the app will be in the real world, on a near-zero testing budget — SimWork must drive the budget need to zero while approximating reality as closely as possible. [S16]
 
 ## 2. Goals
 
@@ -10,6 +10,7 @@ SimWork lets developers like Roger simulate AI-app functionality first, before s
 - A full simulated run costs $0 in LLM and world-API spend by default, with zero real network calls to LLM providers or real world APIs. [S9–S10]
 - Every simulated run produces a DeepEval-based pass/fail report covering the whole run, not only one prompt. [S7, S10]
 - v0.1 ships as a working open-source Python package with an end-to-end demo harness that runs fully simulated. [S1, S7]
+- Polygrow can run thousands of simulated runs before launch, at $0 in LLM and world-API spend, and the simulated results must approximate real-world behaviour closely enough to judge launch readiness. [S16]
 
 ## 3. Scope
 
@@ -29,6 +30,8 @@ SimWork lets developers like Roger simulate AI-app functionality first, before s
 - [MUST] API mocks include stateful behaviour for at least the v0.1 demo: a stub that remembers what was written can be read back (e.g. a created record appears in a later list/get). Prism alone is stateless, so SimWork must add the state layer. [S4]
 - [MUST] Every run is evaluated with DeepEval, pytest-native, and produces a machine-readable + human-readable report with per-metric pass/fail and an overall gate. [S7, S10]
 - [MUST] `simwork init` generates a working starter config, scenario, and eval suite for the user's harness, and ships a pre-made prompt file an AI assistant can follow to configure SimWork for a new app without the user hand-writing config. [S10]
+- [MUST] SimWork supports running thousands of simulated runs for one app: runs are cheap to start, deterministic per seed, and evaluable in bulk — scale is a first-class requirement, not an afterthought. [S16]
+- [SHOULD] Scenarios support variation at scale (parameterised / seeded scenario families), so a thousand runs are not a thousand copies of one hand-written scenario. [S16]
 - [MUST] The factory builds SimWork in small batches, one plan task at a time, with tests, landing on `main` without asking permission per task (SimWork-only autonomy, Roger 2026-11-15). [S1, S8, S15]
 - [SHOULD] Reuse Tenro where it fits for LLM interception, instead of rebuilding that layer from scratch; fall back to SimWork's own fake OpenAI server when Tenro does not fit the user's harness (e.g. harness Tenro does not support). [S4]
 - [SHOULD] Reuse Mesa + SimPy for the world engine (rule-based agent population + discrete-event clock) rather than inventing a new engine, starting with one decision type in the demo. [S4]
@@ -49,6 +52,8 @@ SimWork lets developers like Roger simulate AI-app functionality first, before s
 - [MUST] Work lands on `main` in small batches, at human pace (one small task per 6h run, no bursts), with a report in this chat after each landing; Roger corrects afterwards if anything is wrong. [S15]
 - [MUST] Every significant change ships a README touch-up in the same PR; READMEs in English and current. [S1]
 - [MUST] The spec is the constitution: code that contradicts this spec is drift by definition, not an improvement; evals + acceptance criteria are the gate. [S1]
+- [MUST] First use case is Polygrow (Roger's primary product): SimWork's design is judged first by whether Polygrow can simulate thousands of pre-launch runs at $0. [S16]
+- [SHOULD] Realism is maximised within the $0 constraint: mocks approximate real behaviour as closely as possible — scenario fidelity grounded in real traces and behaviour, plus small-sample calibration against real calls where the user opts in. Scripted mocks verify logic and behaviour, not real reasoning quality; the spec does not claim otherwise. [S16]
 
 ## 6. Dependencies
 
@@ -70,6 +75,7 @@ SimWork lets developers like Roger simulate AI-app functionality first, before s
 - [ ] A stateful stub test passes: create-then-read returns the created record. [S4]
 - [ ] `pytest` suite green in CI; README documents the 15-minute setup, the pre-made prompt, and the $0 default. [S1, S10]
 - [ ] No merge to `main` has happened without Roger's explicit confirmation for that series. [S1, S8]
+- [ ] A thousand-run batch completes at $0 with a deterministic per-run report each (scale smoke test), so the Polygrow pre-launch use case is demonstrably feasible. [S16]
 
 ## 8. Assumptions
 
@@ -78,6 +84,7 @@ SimWork lets developers like Roger simulate AI-app functionality first, before s
 - [ASSUMES] DeepEval's deterministic / rule-based metrics suffice for the v0.1 gate; LLM-judge metrics (e.g. G-Eval) stay opt-in and off by default. — confirm with user [S7]
 - [ASSUMES] The v0.1 demo uses one LLM call chain + one world API, not a full multi-agent system; multi-agent simulation is v0.2+. — confirm with user [S9]
 - [ASSUMES] Licence will be MIT (Roger's usual for dev tools) unless Roger decides otherwise. — confirm with user [S2]
+- [ASSUMES] 'As close to reality as possible' at $0 means scripted scenarios faithful to real behaviour plus deterministic metrics; absolute real-world performance is estimated from a small calibrated real sample, not from simulation alone. — confirm with user [S16]
 
 ## 9. Open questions
 
@@ -104,3 +111,4 @@ SimWork lets developers like Roger simulate AI-app functionality first, before s
 - S13: "Al repo Sim work van las cosas de Sim work, la factory alrededor de el no, permanece en local en ti."
 - S14: "Ojo, si pasan 6 horas y no te pido nada mas, tu mismo te inventas la spec y eso, o sea ejecutas el proceso normal de factory y asi sigues avanzando el proyecto solo"
 - S15: "No dejas anotado nada, en éste chat eres la factory, te inventas la spec y la implementas sin pedirme permiso"
+- S16: "Una constraint nueva: Quiero que sepas que el primer caso de uso de Sim work es en polygrow, que exigiré hacer miles de simulaciones y pruebas para antes de lanzar la app saber que tan buena sera en real world y dispongo de muy poco presupuesto pa probar, simwork deberia llevar a 0 la necesidad de presupuesto (pues se prueba sin api calls reales, pero aproximarse al maximo a la realidad, listo)" (Roger, 2026-11-18)
