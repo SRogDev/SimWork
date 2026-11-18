@@ -7,6 +7,10 @@ preferred version in the APIs.guru catalog, download its OpenAPI spec
 layer (Phase 2, task 2) is `simwork.stateful`, layered in front of Prism
 by `simwork mock --stateful`.
 
+`ApiMockStack` (architecture review 2026-11-18, candidate 3) is the one
+assembly point for fetch → Prism → optional proxy: the CLI and the
+demo harness build a stack instead of hand-assembling the pieces.
+
 Fail-closed, per the spec: an unknown API name, a download failure, a
 missing ``prism`` binary, or a Prism process that exits early all raise
 `ApiMockError` instead of silently falling back to a real API.
@@ -23,6 +27,8 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 from typing import Callable
+
+from simwork.stateful import StatefulStubServer
 
 LIST_URL = "https://api.apis.guru/v2/list.json"
 LIST_TTL_SECONDS = 24 * 3600  # re-fetch the catalog at most once a day
@@ -230,6 +236,85 @@ class PrismMockServer:
             self._proc = None
 
     def __enter__(self) -> "PrismMockServer":
+        return self.start()
+
+    def __exit__(self, *exc: object) -> None:
+        self.stop()
+
+
+class ApiMockStack:
+    """One API mock, end to end: fetch the spec, serve it with Prism,
+    optionally layer the stateful stub proxy in front.
+
+    The single assembly point for the fetch → Prism → proxy stack:
+    `simwork mock` (and later the demo harness) build a stack instead
+    of hand-assembling the pieces. With ``stateful`` on, Prism takes
+    an ephemeral port and the proxy takes the requested one, so the
+    harness always talks to the proxy; otherwise Prism takes the
+    requested port directly. `base_url` is always the address the
+    harness should use.
+
+    Any failure — unknown API, download failure, missing `prism`
+    binary, Prism exiting early, proxy failing to bind — raises
+    `ApiMockError` and leaves nothing half-started behind.
+    """
+
+    def __init__(
+        self,
+        api_name: str,
+        *,
+        host: str = "127.0.0.1",
+        port: int = 0,
+        cache_dir: str | Path | None = None,
+        stateful: bool = False,
+    ):
+        self.api_name = api_name
+        self.host = host
+        self.port = port
+        self.cache_dir = cache_dir
+        self.stateful = stateful
+        self.spec_path: Path | None = None
+        self._prism: PrismMockServer | None = None
+        self._proxy: StatefulStubServer | None = None
+
+    @property
+    def base_url(self) -> str:
+        serving = self._proxy if self._proxy is not None else self._prism
+        assert serving is not None, "ApiMockStack.start() before base_url"
+        return serving.base_url
+
+    def start(self) -> "ApiMockStack":
+        if self._prism is not None:
+            return self
+        self.spec_path = fetch_api_spec(self.api_name, self.cache_dir)
+        self._prism = PrismMockServer(
+            self.spec_path,
+            host=self.host,
+            port=0 if self.stateful else self.port,
+        )
+        try:
+            self._prism.start()
+            if self.stateful:
+                self._proxy = StatefulStubServer(
+                    self._prism.base_url, host=self.host, port=self.port
+                )
+                self._proxy.start()
+        except Exception:
+            self.stop()
+            raise
+        return self
+
+    def stop(self) -> None:
+        # The proxy stops before Prism: it is the only thing talking to
+        # Prism, so no request can be in flight when Prism goes down.
+        if self._proxy is not None:
+            self._proxy.stop()
+            self._proxy = None
+        if self._prism is not None:
+            self._prism.stop()
+            self._prism = None
+
+    def __enter__(self) -> "ApiMockStack":
         return self.start()
 
     def __exit__(self, *exc: object) -> None:

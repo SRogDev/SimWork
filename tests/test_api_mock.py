@@ -16,11 +16,13 @@ import pytest
 
 from simwork.api_mock import (
     ApiMockError,
+    ApiMockStack,
     PrismMockServer,
     fetch_api_spec,
     resolve_api_spec_url,
 )
 from simwork.cli import main
+from simwork.stateful import StatefulStubServer
 
 LIST_FIXTURE = {
     "example.com": {
@@ -297,6 +299,80 @@ def test_prism_server_exits_early_fails_closed(tmp_path, monkeypatch):
     monkeypatch.setattr("time.sleep", lambda s: None)
     with pytest.raises(ApiMockError, match="exited"):
         PrismMockServer(_write_spec(tmp_path), port=18772, timeout=5).start()
+
+
+# --- ApiMockStack ----------------------------------------------------------
+
+
+def _stack_urlopen(calls: list):
+    """Fake urlopen serving the catalog + spec; Prism's readiness probe
+    gets a 404, which Prism counts as ready."""
+    return _fake_urlopen_factory(
+        calls,
+        {
+            "https://api.apis.guru/v2/list.json": LIST_FIXTURE,
+            "https://api.apis.guru/v2/specs/example.com/1.0.0/openapi.json": SPEC_FIXTURE,
+        },
+    )
+
+
+def test_stack_without_stateful_serves_prism_on_requested_port(tmp_path, monkeypatch):
+    monkeypatch.setattr("simwork.api_mock.shutil.which", lambda name: "/usr/bin/prism")
+    monkeypatch.setattr("simwork.api_mock.subprocess.Popen", _FakePopen)
+    monkeypatch.setattr("simwork.api_mock.urllib.request.urlopen", _stack_urlopen([]))
+    stack = ApiMockStack("example.com", port=18781, cache_dir=tmp_path)
+    with stack:
+        assert stack.base_url == "http://127.0.0.1:18781"
+        assert stack.spec_path is not None and stack.spec_path.exists()
+        assert len(_FakePopen.instances) == 1
+        argv = _FakePopen.instances[0].argv
+        assert "--port" in argv and "18781" in argv
+    assert _FakePopen.instances[0].terminated
+
+
+def test_stack_with_stateful_layers_proxy_on_requested_port(tmp_path, monkeypatch):
+    monkeypatch.setattr("simwork.api_mock.shutil.which", lambda name: "/usr/bin/prism")
+    monkeypatch.setattr("simwork.api_mock.subprocess.Popen", _FakePopen)
+    monkeypatch.setattr("simwork.api_mock.urllib.request.urlopen", _stack_urlopen([]))
+    stops: list[str] = []
+    orig_proxy_stop = StatefulStubServer.stop
+    orig_prism_stop = PrismMockServer.stop
+    monkeypatch.setattr(
+        StatefulStubServer,
+        "stop",
+        lambda self: (stops.append("proxy"), orig_proxy_stop(self)),
+    )
+    monkeypatch.setattr(
+        PrismMockServer,
+        "stop",
+        lambda self: (stops.append("prism"), orig_prism_stop(self)),
+    )
+    stack = ApiMockStack("example.com", port=18782, cache_dir=tmp_path, stateful=True)
+    with stack:
+        assert stack.base_url == "http://127.0.0.1:18782"  # the proxy's port
+        argv = _FakePopen.instances[0].argv
+        prism_port = argv[argv.index("--port") + 1]
+        assert prism_port != "18782"  # Prism took an ephemeral port
+    assert stops == ["proxy", "prism"]  # proxy stops before Prism
+    assert _FakePopen.instances[0].terminated
+
+
+def test_stack_unknown_api_fails_closed_without_spawning_prism(tmp_path, monkeypatch):
+    monkeypatch.setattr("simwork.api_mock.subprocess.Popen", _FakePopen)
+    monkeypatch.setattr(
+        "simwork.api_mock.urllib.request.urlopen",
+        _fake_urlopen_factory([], {"https://api.apis.guru/v2/list.json": LIST_FIXTURE}),
+    )
+    with pytest.raises(ApiMockError, match="nope.example"):
+        ApiMockStack("nope.example", cache_dir=tmp_path).start()
+    assert _FakePopen.instances == []
+
+
+def test_stack_missing_prism_binary_fails_closed(tmp_path, monkeypatch):
+    monkeypatch.setattr("simwork.api_mock.shutil.which", lambda name: None)
+    monkeypatch.setattr("simwork.api_mock.urllib.request.urlopen", _stack_urlopen([]))
+    with pytest.raises(ApiMockError, match="prism"):
+        ApiMockStack("example.com", cache_dir=tmp_path).start()
 
 
 # --- CLI -------------------------------------------------------------------

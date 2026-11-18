@@ -272,9 +272,13 @@ class _ImmediateCtrlC:
 def _mocked_servers(monkeypatch):
     _FakePrism.instances = []
     _FakeProxy.instances = []
-    monkeypatch.setattr("simwork.cli.fetch_api_spec", lambda api, cache_dir: "/cache/spec.json")
-    monkeypatch.setattr("simwork.cli.PrismMockServer", _FakePrism)
-    monkeypatch.setattr("simwork.cli.StatefulStubServer", _FakeProxy)
+    # The stack assembles these in simwork.api_mock now (candidate 3),
+    # so the patch points live there, not in simwork.cli.
+    monkeypatch.setattr(
+        "simwork.api_mock.fetch_api_spec", lambda api, cache_dir: "/cache/spec.json"
+    )
+    monkeypatch.setattr("simwork.api_mock.PrismMockServer", _FakePrism)
+    monkeypatch.setattr("simwork.api_mock.StatefulStubServer", _FakeProxy)
     monkeypatch.setattr("simwork.cli.threading.Event", lambda: _ImmediateCtrlC())
     return _FakePrism, _FakeProxy
 

@@ -1,6 +1,6 @@
 """SimWork — simulate AI apps in a fake world before spending real API calls."""
 
-from simwork.api_mock import ApiMockError, PrismMockServer, fetch_api_spec
+from simwork.api_mock import ApiMockError, ApiMockStack, PrismMockServer, fetch_api_spec
 from simwork.deepeval_judge import (
     JudgeError,
     check_judge_ready,
@@ -20,6 +20,7 @@ __version__ = "0.1.0"
 
 __all__ = [
     "ApiMockError",
+    "ApiMockStack",
     "EvalReport",
     "InitError",
     "JudgeError",

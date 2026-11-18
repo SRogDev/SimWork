@@ -14,14 +14,13 @@ import sys
 import threading
 
 from simwork import __version__
-from simwork.api_mock import ApiMockError, PrismMockServer, fetch_api_spec
+from simwork.api_mock import ApiMockError, ApiMockStack
 from simwork.deepeval_judge import JudgeError, check_judge_ready, evaluate_run_with_judge
 from simwork.eval import evaluate_run
 from simwork.trace import TraceError, load_trace
 from simwork.init import InitError, init_project
 from simwork.llm import ScenarioError
 from simwork.routing import RoutingError, SimWorkRouter, load_config
-from simwork.stateful import StatefulStubServer
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -224,41 +223,33 @@ def cmd_mock(args: argparse.Namespace) -> int:
 
     With ``--stateful`` a `StatefulStubServer` proxy is layered in front of
     Prism (Prism takes an ephemeral port; the proxy takes the requested
-    one) so writes are remembered across reads.
+    one) so writes are remembered across reads. The whole stack is one
+    `ApiMockStack` — the CLI only prints the banner and waits.
     """
+    stack = ApiMockStack(
+        args.api,
+        host=args.host,
+        port=args.port,
+        cache_dir=args.cache_dir,
+        stateful=args.stateful,
+    )
     try:
-        spec_path = fetch_api_spec(args.api, args.cache_dir)
+        with stack:
+            print(f"SimWork API mock running: {args.api} (spec: {stack.spec_path})", flush=True)
+            if args.stateful:
+                print(
+                    "Stateful stubs on: writes are remembered (create-then-read works).",
+                    flush=True,
+                )
+            print(f"API_BASE_URL={stack.base_url}", flush=True)
+            print("Press Ctrl-C to stop.", flush=True)
+            try:
+                threading.Event().wait()
+            except KeyboardInterrupt:
+                print("\nStopping API mock.")
     except ApiMockError as e:
         print(f"simwork mock: error: {e}", file=sys.stderr)
         return 1
-    try:
-        prism = PrismMockServer(
-            spec_path,
-            host=args.host,
-            port=0 if args.stateful else args.port,
-        )
-        prism.start()
-        proxy = None
-        if args.stateful:
-            proxy = StatefulStubServer(prism.base_url, host=args.host, port=args.port)
-            proxy.start()
-    except ApiMockError as e:
-        print(f"simwork mock: error: {e}", file=sys.stderr)
-        return 1
-    serving = proxy if proxy is not None else prism
-    print(f"SimWork API mock running: {args.api} (spec: {spec_path})", flush=True)
-    if proxy is not None:
-        print("Stateful stubs on: writes are remembered (create-then-read works).", flush=True)
-    print(f"API_BASE_URL={serving.base_url}", flush=True)
-    print("Press Ctrl-C to stop.", flush=True)
-    try:
-        threading.Event().wait()
-    except KeyboardInterrupt:
-        print("\nStopping API mock.")
-    finally:
-        if proxy is not None:
-            proxy.stop()
-        prism.stop()
     return 0
 
 
