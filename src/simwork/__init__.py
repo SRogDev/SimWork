@@ -10,7 +10,8 @@ from simwork.deepeval_judge import (
     run_judge,
     trace_to_test_case,
 )
-from simwork.eval import EvalReport, MetricResult, TraceError, evaluate_run, load_trace
+from simwork.eval import EvalReport, MetricResult, evaluate_run
+from simwork.trace import TraceError, load_trace
 from simwork.init import InitError, init_project
 from simwork.routing import RoutingError, SimWorkConfig, SimWorkRouter, load_config
 from simwork.trace import TraceRecorder, completion_to_step

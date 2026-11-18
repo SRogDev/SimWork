@@ -16,7 +16,8 @@ import threading
 from simwork import __version__
 from simwork.api_mock import ApiMockError, PrismMockServer, fetch_api_spec
 from simwork.deepeval_judge import JudgeError, check_judge_ready, evaluate_run_with_judge
-from simwork.eval import TraceError, evaluate_run, load_trace
+from simwork.eval import evaluate_run
+from simwork.trace import TraceError, load_trace
 from simwork.init import InitError, init_project
 from simwork.llm import ScenarioError
 from simwork.routing import RoutingError, SimWorkRouter, load_config

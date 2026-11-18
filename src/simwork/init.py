@@ -20,7 +20,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from simwork.eval import evaluate_run, validate_trace
+from simwork.eval import evaluate_run
+from simwork.trace import validate_trace
 from simwork.llm import parse_scenario
 
 _CONFIG_YAML = """\

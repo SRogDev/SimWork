@@ -1,27 +1,176 @@
-"""Trace capture from a simulated run (Phase 3, task 2).
+"""Trace capture from a simulated run (Phase 3, task 2) — and the trace
+itself (architecture review 2026-11-18, candidate 2).
 
-`simwork eval` evaluates a recorded run trace — until now those traces
-had to be hand-written. A `TraceRecorder` captures one from a real
-simulated run instead: assistant steps come from the completions the
-scripted LLM returns (`record_completion`, or automatically when the
-recorder is handed to `ScriptedLLM` / `FakeOpenAIServer` /
-`SimWorkRouter`), and tool-result steps come from the harness executing
-the tools the LLM asked for (`record_tool_result`).
+The trace is SimWork's central domain concept: a recorded run, as a
+JSON object with ``steps`` (assistant turns, with ``content`` and/or
+``tool_calls``, plus ``tool_result`` steps) and ``expected`` (the tool
+calls the run should have made, the facts the final answer should
+cover). This module owns that shape — parse it, validate it, hash it,
+read its steps and final answer — and every other module consumes it
+through this interface instead of re-implementing the shape:
 
-The trace a recorder produces is the trace format `simwork.eval`
-validates, so a captured run feeds straight into `simwork eval` —
-same seed + same scenario run twice produces the same trace hash and
-the same report. No LLM judge, no network, $0.
+Trace format (JSON, strict — anything invalid fails closed)::
+
+    {
+      "run_id": "ticket-status-1",   // optional
+      "seed": 7,                     // optional, default 0
+      "steps": [                     // required, non-empty
+        {"type": "assistant", "content": "I will check the ticket."},
+        {"type": "assistant",
+         "tool_calls": [{"name": "lookup_ticket",
+                         "arguments": {"ticket_id": "T-123"}}]},
+        {"type": "tool_result", "name": "lookup_ticket",
+         "result": {"status": "shipped"}},
+        {"type": "assistant", "content": "Your replacement has shipped."}
+      ],
+      "expected": {                  // optional
+        "tool_calls": [{"name": "lookup_ticket",
+                        "arguments": {"ticket_id": "T-123"}}],
+        "final_answer_contains": ["shipped"]
+      }
+    }
+
+- `TraceRecorder` captures a trace from a real simulated run:
+  assistant steps come from the completions the scripted LLM returns
+  (`record_completion`, or automatically when the recorder is handed
+  to `ScriptedLLM` / `SimWorkRouter`), and tool-result steps come from
+  the harness executing the tools the LLM asked for
+  (`record_tool_result`).
+- `simwork.eval` evaluates a trace with the $0 metrics; it never
+  validates or hashes one itself.
+- `simwork.deepeval_judge` converts a trace into a DeepEval test case
+  through `tool_calls` / `final_answer` here.
+- `simwork.init` validates its starter trace through `validate_trace`.
+
+A captured run feeds straight into `simwork eval` — same seed + same
+scenario run twice produces the same trace hash and the same report.
+No LLM judge, no network, $0.
 """
 
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 from pathlib import Path
 from typing import Any
 
-from simwork.eval import TraceError, validate_trace
+# The trace shape: a JSON object (see the module docstring). It travels
+# as a plain dict because it is read from and written to JSON files;
+# the alias names the domain concept at every seam instead of leaving
+# `dict[str, Any]` everywhere.
+Trace = dict[str, Any]
+
+_TOP_LEVEL_KEYS = {"run_id", "seed", "steps", "expected"}
+_EXPECTED_KEYS = {"tool_calls", "final_answer_contains"}
+_STEP_TYPES = ("assistant", "tool_result")
+
+
+class TraceError(ValueError):
+    """Raised when a trace file is missing, unparseable, or invalid."""
+
+
+def validate_trace(data: Any, *, source: str = "<trace>") -> Trace:
+    """Validate a parsed trace dict; returns it unchanged if valid."""
+    if not isinstance(data, dict):
+        raise TraceError(f"{source}: trace must be a mapping, got {type(data).__name__}")
+    unknown = set(data) - _TOP_LEVEL_KEYS
+    if unknown:
+        raise TraceError(f"{source}: unknown top-level key(s): {sorted(unknown)}")
+    if not isinstance(data.get("steps"), list) or not data["steps"]:
+        raise TraceError(f"{source}: 'steps' must be a non-empty list")
+    for i, step in enumerate(data["steps"]):
+        _validate_step(step, i, source)
+    if "expected" in data:
+        if not isinstance(data["expected"], dict):
+            raise TraceError(f"{source}: 'expected' must be a mapping")
+        unknown_expected = set(data["expected"]) - _EXPECTED_KEYS
+        if unknown_expected:
+            raise TraceError(f"{source}: unknown 'expected' key(s): {sorted(unknown_expected)}")
+        _validate_tool_calls(data["expected"].get("tool_calls", []), source, "expected")
+        final = data["expected"].get("final_answer_contains", [])
+        if not isinstance(final, list) or not all(isinstance(s, str) for s in final):
+            raise TraceError(
+                f"{source}: 'expected.final_answer_contains' must be a list of strings"
+            )
+    if "seed" in data and (isinstance(data["seed"], bool) or not isinstance(data["seed"], int)):
+        raise TraceError(f"{source}: 'seed' must be an integer")
+    if "run_id" in data and not isinstance(data["run_id"], str):
+        raise TraceError(f"{source}: 'run_id' must be a string")
+    return data
+
+
+def load_trace(path: str | Path) -> Trace:
+    """Load and validate a trace from a JSON file (fails closed)."""
+    path = Path(path)
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as e:
+        raise TraceError(f"cannot read trace file {path}: {e}") from e
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as e:
+        raise TraceError(f"{path}: invalid JSON: {e}") from e
+    return validate_trace(data, source=str(path))
+
+
+def trace_hash(trace: Trace) -> str:
+    """SHA-256 of the canonical JSON of the trace (stable key order).
+
+    Same seed + same scenario run twice produces the same hash, so a
+    report for the same run is comparable across runs.
+    """
+    canonical = json.dumps(trace, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def final_answer(trace: Trace) -> str:
+    """The run's final answer: the last assistant step's content, or ""."""
+    for step in reversed(trace["steps"]):
+        if step.get("type") == "assistant" and isinstance(step.get("content"), str):
+            return step["content"]
+    return ""
+
+
+def tool_calls(trace: Trace) -> list[dict[str, Any]]:
+    """Every tool call the run's assistant steps made, in order."""
+    calls: list[dict[str, Any]] = []
+    for step in trace["steps"]:
+        calls.extend(step.get("tool_calls", []))
+    return calls
+
+
+def _validate_step(step: Any, index: int, source: str) -> None:
+    if not isinstance(step, dict):
+        raise TraceError(f"{source}: step {index} must be a mapping")
+    step_type = step.get("type")
+    if step_type not in _STEP_TYPES:
+        raise TraceError(f"{source}: step {index} has unknown step type {step_type!r}")
+    unknown = set(step) - {"type", "content", "tool_calls", "name", "result"}
+    if unknown:
+        raise TraceError(f"{source}: step {index} has unknown key(s): {sorted(unknown)}")
+    if step_type == "assistant":
+        if "content" in step and not isinstance(step["content"], str):
+            raise TraceError(f"{source}: step {index} 'content' must be a string")
+        if "tool_calls" in step:
+            _validate_tool_calls(step["tool_calls"], source, f"step {index}")
+        if "content" not in step and "tool_calls" not in step:
+            raise TraceError(f"{source}: step {index} needs 'content' and/or 'tool_calls'")
+    else:  # tool_result
+        if not isinstance(step.get("name"), str):
+            raise TraceError(f"{source}: step {index} 'name' must be a string")
+
+
+def _validate_tool_calls(calls: Any, source: str, where: str) -> None:
+    if not isinstance(calls, list):
+        raise TraceError(f"{source}: {where} 'tool_calls' must be a list")
+    for i, call in enumerate(calls):
+        if not isinstance(call, dict):
+            raise TraceError(f"{source}: {where} tool call {i} must be a mapping")
+        if not isinstance(call.get("name"), str):
+            raise TraceError(f"{source}: {where} tool call {i} 'name' must be a string")
+        if "arguments" in call and not isinstance(call["arguments"], dict):
+            raise TraceError(f"{source}: {where} tool call {i} 'arguments' must be a mapping")
 
 
 def completion_to_step(completion: dict[str, Any]) -> dict[str, Any]:
@@ -123,11 +272,11 @@ class TraceRecorder:
         self._steps.append(step)
         return copy.deepcopy(step)
 
-    def to_trace(self, *, expected: dict[str, Any] | None = None) -> dict[str, Any]:
+    def to_trace(self, *, expected: dict[str, Any] | None = None) -> Trace:
         """Return the recorded run as a validated eval trace dict."""
         if not self._steps:
             raise TraceError("no steps recorded yet — nothing to evaluate")
-        trace: dict[str, Any] = {
+        trace: Trace = {
             "run_id": self.run_id,
             "seed": self.seed,
             "steps": copy.deepcopy(self._steps),
@@ -138,7 +287,7 @@ class TraceRecorder:
             trace["expected"] = copy.deepcopy(expected)
         return validate_trace(trace)
 
-    def save(self, path: str | Path, *, expected: dict[str, Any] | None = None) -> dict[str, Any]:
+    def save(self, path: str | Path, *, expected: dict[str, Any] | None = None) -> Trace:
         """Write the recorded trace as canonical JSON; returns the trace."""
         trace = self.to_trace(expected=expected)
         path = Path(path)

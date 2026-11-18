@@ -17,54 +17,30 @@ opt-in judge path in ``simwork.deepeval_judge`` (``simwork eval
 --judge``); the $0 gate here never imports them.
 See ``docs/deepeval-wiring-2026-11-17.md``.
 
-Trace format (JSON, strict — anything invalid fails closed)::
-
-    {
-      "run_id": "ticket-status-1",   // optional
-      "seed": 7,                     // optional, default 0
-      "steps": [                     // required, non-empty
-        {"type": "assistant", "content": "I will check the ticket."},
-        {"type": "assistant",
-         "tool_calls": [{"name": "lookup_ticket",
-                         "arguments": {"ticket_id": "T-123"}}]},
-        {"type": "tool_result", "name": "lookup_ticket",
-         "result": {"status": "shipped"}},
-        {"type": "assistant", "content": "Your replacement has shipped."}
-      ],
-      "expected": {                  // optional
-        "tool_calls": [{"name": "lookup_ticket",
-                        "arguments": {"ticket_id": "T-123"}}],
-        "final_answer_contains": ["shipped"]
-      }
-    }
-
 The report carries a ``trace_hash`` (SHA-256 of the canonical JSON of
 the trace) so the spec's acceptance criterion holds: same seed + same
 scenario run twice produces an identical trace hash and identical
 eval report.
+
+The trace shape itself — parse, validate, hash, steps, final answer —
+is owned by ``simwork.trace``; this module only evaluates a trace
+through that interface.
 """
 
 from __future__ import annotations
 
-import hashlib
 import json
 from collections.abc import Iterable
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
+
+from simwork.trace import Trace, final_answer, tool_calls, trace_hash, validate_trace
 
 _DEFAULT_THRESHOLD = 1.0
 # The metric names, shared with the opt-in judge adapter
 # (`simwork.deepeval_judge`): one source of truth for both adapters, so
 # a metric cannot be spelled one way natively and another by the judge.
 METRIC_NAMES = ("tool_correctness", "task_completion")
-_TOP_LEVEL_KEYS = {"run_id", "seed", "steps", "expected"}
-_EXPECTED_KEYS = {"tool_calls", "final_answer_contains"}
-_STEP_TYPES = ("assistant", "tool_result")
-
-
-class TraceError(ValueError):
-    """Raised when a trace file is missing, unparseable, or invalid."""
 
 
 @dataclass(frozen=True)
@@ -136,50 +112,6 @@ class EvalReport:
         return "\n".join(lines) + "\n"
 
 
-def load_trace(path: str | Path) -> dict[str, Any]:
-    """Load and validate a trace from a JSON file (fails closed)."""
-    path = Path(path)
-    try:
-        text = path.read_text(encoding="utf-8")
-    except OSError as e:
-        raise TraceError(f"cannot read trace file {path}: {e}") from e
-    try:
-        data = json.loads(text)
-    except json.JSONDecodeError as e:
-        raise TraceError(f"{path}: invalid JSON: {e}") from e
-    return validate_trace(data, source=str(path))
-
-
-def validate_trace(data: Any, *, source: str = "<trace>") -> dict[str, Any]:
-    """Validate a parsed trace dict; returns it unchanged if valid."""
-    if not isinstance(data, dict):
-        raise TraceError(f"{source}: trace must be a mapping, got {type(data).__name__}")
-    unknown = set(data) - _TOP_LEVEL_KEYS
-    if unknown:
-        raise TraceError(f"{source}: unknown top-level key(s): {sorted(unknown)}")
-    if not isinstance(data.get("steps"), list) or not data["steps"]:
-        raise TraceError(f"{source}: 'steps' must be a non-empty list")
-    for i, step in enumerate(data["steps"]):
-        _validate_step(step, i, source)
-    if "expected" in data:
-        if not isinstance(data["expected"], dict):
-            raise TraceError(f"{source}: 'expected' must be a mapping")
-        unknown_expected = set(data["expected"]) - _EXPECTED_KEYS
-        if unknown_expected:
-            raise TraceError(f"{source}: unknown 'expected' key(s): {sorted(unknown_expected)}")
-        _validate_tool_calls(data["expected"].get("tool_calls", []), source, "expected")
-        final = data["expected"].get("final_answer_contains", [])
-        if not isinstance(final, list) or not all(isinstance(s, str) for s in final):
-            raise TraceError(
-                f"{source}: 'expected.final_answer_contains' must be a list of strings"
-            )
-    if "seed" in data and (isinstance(data["seed"], bool) or not isinstance(data["seed"], int)):
-        raise TraceError(f"{source}: 'seed' must be an integer")
-    if "run_id" in data and not isinstance(data["run_id"], str):
-        raise TraceError(f"{source}: 'run_id' must be a string")
-    return data
-
-
 def unknown_metric_names(names: Iterable[str]) -> list[str]:
     """Names in ``names`` that are not one of ``METRIC_NAMES``.
 
@@ -189,9 +121,7 @@ def unknown_metric_names(names: Iterable[str]) -> list[str]:
     return [name for name in names if name not in METRIC_NAMES]
 
 
-def evaluate_run(
-    trace: dict[str, Any], *, thresholds: dict[str, float] | None = None
-) -> EvalReport:
+def evaluate_run(trace: Trace, *, thresholds: dict[str, float] | None = None) -> EvalReport:
     """Evaluate a validated trace and return the pass/fail report.
 
     Thresholds default to 1.0 (strict gate); pass ``thresholds`` to
@@ -209,21 +139,9 @@ def evaluate_run(
     return EvalReport(
         run_id=trace.get("run_id"),
         seed=trace.get("seed", 0),
-        trace_hash=_trace_hash(trace),
+        trace_hash=trace_hash(trace),
         metrics=results,
     )
-
-
-def _trace_hash(trace: dict[str, Any]) -> str:
-    canonical = json.dumps(trace, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-
-
-def _actual_tool_calls(trace: dict[str, Any]) -> list[dict[str, Any]]:
-    calls = []
-    for step in trace["steps"]:
-        calls.extend(step.get("tool_calls", []))
-    return calls
 
 
 def _tool_call_matches(actual: dict[str, Any], expected: dict[str, Any]) -> bool:
@@ -232,9 +150,9 @@ def _tool_call_matches(actual: dict[str, Any], expected: dict[str, Any]) -> bool
     ) == expected.get("arguments", {})
 
 
-def _tool_correctness(trace: dict[str, Any], threshold: float) -> MetricResult:
+def _tool_correctness(trace: Trace, threshold: float) -> MetricResult:
     expected = trace.get("expected", {}).get("tool_calls", [])
-    actual = _actual_tool_calls(trace)
+    actual = tool_calls(trace)
     if not expected:
         score = 1.0 if not actual else 0.0
         details = (
@@ -262,19 +180,7 @@ def _tool_correctness(trace: dict[str, Any], threshold: float) -> MetricResult:
     )
 
 
-def final_answer(trace: dict[str, Any]) -> str:
-    """The run's final answer: the last assistant step's content, or "".
-
-    Shared with the judge adapter, which feeds it to DeepEval as the
-    test case's actual output.
-    """
-    for step in reversed(trace["steps"]):
-        if step.get("type") == "assistant" and isinstance(step.get("content"), str):
-            return step["content"]
-    return ""
-
-
-def _task_completion(trace: dict[str, Any], threshold: float) -> MetricResult:
+def _task_completion(trace: Trace, threshold: float) -> MetricResult:
     wanted = trace.get("expected", {}).get("final_answer_contains", [])
     answer = final_answer(trace)
     missing = [s for s in wanted if s not in answer]
@@ -291,36 +197,3 @@ def _task_completion(trace: dict[str, Any], threshold: float) -> MetricResult:
         passed=score >= threshold,
         details=details,
     )
-
-
-def _validate_step(step: Any, index: int, source: str) -> None:
-    if not isinstance(step, dict):
-        raise TraceError(f"{source}: step {index} must be a mapping")
-    step_type = step.get("type")
-    if step_type not in _STEP_TYPES:
-        raise TraceError(f"{source}: step {index} has unknown step type {step_type!r}")
-    unknown = set(step) - {"type", "content", "tool_calls", "name", "result"}
-    if unknown:
-        raise TraceError(f"{source}: step {index} has unknown key(s): {sorted(unknown)}")
-    if step_type == "assistant":
-        if "content" in step and not isinstance(step["content"], str):
-            raise TraceError(f"{source}: step {index} 'content' must be a string")
-        if "tool_calls" in step:
-            _validate_tool_calls(step["tool_calls"], source, f"step {index}")
-        if "content" not in step and "tool_calls" not in step:
-            raise TraceError(f"{source}: step {index} needs 'content' and/or 'tool_calls'")
-    else:  # tool_result
-        if not isinstance(step.get("name"), str):
-            raise TraceError(f"{source}: step {index} 'name' must be a string")
-
-
-def _validate_tool_calls(calls: Any, source: str, where: str) -> None:
-    if not isinstance(calls, list):
-        raise TraceError(f"{source}: {where} 'tool_calls' must be a list")
-    for i, call in enumerate(calls):
-        if not isinstance(call, dict):
-            raise TraceError(f"{source}: {where} tool call {i} must be a mapping")
-        if not isinstance(call.get("name"), str):
-            raise TraceError(f"{source}: {where} tool call {i} 'name' must be a string")
-        if "arguments" in call and not isinstance(call["arguments"], dict):
-            raise TraceError(f"{source}: {where} tool call {i} 'arguments' must be a mapping")

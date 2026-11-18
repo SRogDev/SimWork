@@ -59,10 +59,9 @@ from simwork.eval import (
     EvalReport,
     MetricResult,
     evaluate_run,
-    final_answer,
     unknown_metric_names,
-    validate_trace,
 )
+from simwork.trace import Trace, final_answer, tool_calls, validate_trace
 
 # LLM calls per judge metric: exact-match tool correctness is deterministic
 # (async_mode=False, verified offline); task completion is an LLM judge.
@@ -107,7 +106,7 @@ def _validate_include(include: tuple[str, ...] | list[str]) -> tuple[str, ...]:
     return tuple(include)
 
 
-def _task_text(trace: dict[str, Any]) -> str:
+def _task_text(trace: Trace) -> str:
     """Task description for the judge: run id + the facts it must cover."""
     run_id = trace.get("run_id") or "unnamed"
     facts = trace.get("expected", {}).get("final_answer_contains", [])
@@ -116,11 +115,11 @@ def _task_text(trace: dict[str, Any]) -> str:
     return f"Run {run_id}"
 
 
-def trace_to_test_case(trace: dict[str, Any]) -> Any:
+def trace_to_test_case(trace: Trace) -> Any:
     """Convert a validated SimWork trace into a DeepEval ``LLMTestCase``."""
     LLMTestCase, ToolCall, _, _, _ = _load_deepeval()
     trace = validate_trace(trace)
-    actual_calls = [call for step in trace["steps"] for call in step.get("tool_calls", [])]
+    actual_calls = tool_calls(trace)
     expected_calls = trace.get("expected", {}).get("tool_calls", [])
     return LLMTestCase(
         input=_task_text(trace),
@@ -200,7 +199,7 @@ def check_judge_ready(
 
 
 def run_judge(
-    trace: dict[str, Any],
+    trace: Trace,
     *,
     model: str | None = None,
     max_llm_calls: int = 1,
@@ -238,7 +237,7 @@ def run_judge(
 
 
 def evaluate_run_with_judge(
-    trace: dict[str, Any],
+    trace: Trace,
     *,
     model: str | None = None,
     max_llm_calls: int = 1,

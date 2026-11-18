@@ -13,12 +13,7 @@ import json
 import pytest
 
 from simwork.cli import main
-from simwork.eval import (
-    EvalReport,
-    TraceError,
-    evaluate_run,
-    load_trace,
-)
+from simwork.eval import EvalReport, evaluate_run
 
 PASSING_TRACE = {
     "run_id": "ticket-status-1",
@@ -41,49 +36,6 @@ PASSING_TRACE = {
         "final_answer_contains": ["shipped"],
     },
 }
-
-
-def test_load_trace_accepts_valid_file(tmp_path):
-    path = tmp_path / "trace.json"
-    path.write_text(json.dumps(PASSING_TRACE), encoding="utf-8")
-    assert load_trace(path) == PASSING_TRACE
-
-
-def test_load_trace_missing_file_fails_closed(tmp_path):
-    with pytest.raises(TraceError, match="cannot read trace"):
-        load_trace(tmp_path / "nope.json")
-
-
-def test_load_trace_invalid_json_fails_closed(tmp_path):
-    path = tmp_path / "trace.json"
-    path.write_text("{not json", encoding="utf-8")
-    with pytest.raises(TraceError, match="invalid JSON"):
-        load_trace(path)
-
-
-def test_load_trace_rejects_unknown_top_level_key(tmp_path):
-    bad = dict(PASSING_TRACE, surprise=True)
-    path = tmp_path / "trace.json"
-    path.write_text(json.dumps(bad), encoding="utf-8")
-    with pytest.raises(TraceError, match="unknown top-level key"):
-        load_trace(path)
-
-
-def test_load_trace_rejects_empty_steps(tmp_path):
-    bad = dict(PASSING_TRACE, steps=[])
-    path = tmp_path / "trace.json"
-    path.write_text(json.dumps(bad), encoding="utf-8")
-    with pytest.raises(TraceError, match="non-empty"):
-        load_trace(path)
-
-
-def test_load_trace_rejects_unknown_step_type(tmp_path):
-    bad = json.loads(json.dumps(PASSING_TRACE))
-    bad["steps"][0] = {"type": "mystery", "content": "?"}
-    path = tmp_path / "trace.json"
-    path.write_text(json.dumps(bad), encoding="utf-8")
-    with pytest.raises(TraceError, match="unknown step type"):
-        load_trace(path)
 
 
 def test_tool_correctness_exact_match_scores_one():

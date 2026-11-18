@@ -12,10 +12,18 @@ import urllib.request
 
 import pytest
 
-from simwork.eval import TraceError, evaluate_run, load_trace
+from simwork.eval import evaluate_run
 from simwork.llm import FakeOpenAIServer, ScriptedLLM
 from simwork.routing import SimWorkConfig, SimWorkRouter
-from simwork.trace import TraceRecorder, completion_to_step
+from simwork.trace import (
+    TraceError,
+    TraceRecorder,
+    completion_to_step,
+    final_answer,
+    load_trace,
+    tool_calls,
+    trace_hash,
+)
 
 SCRIPT = [
     {"content": "I will check the ticket."},
@@ -139,6 +147,70 @@ def test_recorder_save_load_round_trip(tmp_path) -> None:
     saved = recorder.save(path, expected=EXPECTED)
     assert load_trace(path) == saved
     assert saved == recorder.to_trace(expected=EXPECTED)
+
+
+def test_load_trace_accepts_valid_file(tmp_path):
+    trace = _run_ticket_loop().to_trace(expected=EXPECTED)
+    path = tmp_path / "trace.json"
+    path.write_text(json.dumps(trace), encoding="utf-8")
+    assert load_trace(path) == trace
+
+
+def test_load_trace_missing_file_fails_closed(tmp_path):
+    with pytest.raises(TraceError, match="cannot read trace"):
+        load_trace(tmp_path / "nope.json")
+
+
+def test_load_trace_invalid_json_fails_closed(tmp_path):
+    path = tmp_path / "trace.json"
+    path.write_text("{not json", encoding="utf-8")
+    with pytest.raises(TraceError, match="invalid JSON"):
+        load_trace(path)
+
+
+def test_load_trace_rejects_unknown_top_level_key(tmp_path):
+    trace = _run_ticket_loop().to_trace(expected=EXPECTED)
+    trace["surprise"] = True
+    path = tmp_path / "trace.json"
+    path.write_text(json.dumps(trace), encoding="utf-8")
+    with pytest.raises(TraceError, match="unknown top-level key"):
+        load_trace(path)
+
+
+def test_load_trace_rejects_empty_steps(tmp_path):
+    trace = _run_ticket_loop().to_trace(expected=EXPECTED)
+    trace["steps"] = []
+    path = tmp_path / "trace.json"
+    path.write_text(json.dumps(trace), encoding="utf-8")
+    with pytest.raises(TraceError, match="non-empty"):
+        load_trace(path)
+
+
+def test_load_trace_rejects_unknown_step_type(tmp_path):
+    trace = _run_ticket_loop().to_trace(expected=EXPECTED)
+    trace["steps"][0] = {"type": "mystery", "content": "?"}
+    path = tmp_path / "trace.json"
+    path.write_text(json.dumps(trace), encoding="utf-8")
+    with pytest.raises(TraceError, match="unknown step type"):
+        load_trace(path)
+
+
+def test_trace_hash_matches_example() -> None:
+    assert trace_hash(_run_ticket_loop().to_trace(expected=EXPECTED)) == EXAMPLE_HASH
+
+
+def test_tool_calls_collects_from_steps() -> None:
+    trace = _run_ticket_loop().to_trace(expected=EXPECTED)
+    assert tool_calls(trace) == [{"name": "lookup_ticket", "arguments": {"ticket_id": "T-123"}}]
+
+
+def test_final_answer_returns_last_assistant_content() -> None:
+    trace = _run_ticket_loop().to_trace(expected=EXPECTED)
+    assert final_answer(trace) == "Your replacement has shipped."
+
+
+def test_final_answer_empty_when_no_assistant_content() -> None:
+    assert final_answer({"steps": [{"type": "tool_result", "name": "x", "result": {}}]}) == ""
 
 
 def test_scripted_llm_records_each_turn_when_given_a_recorder() -> None:
