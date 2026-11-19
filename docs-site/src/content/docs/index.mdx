@@ -1,0 +1,52 @@
+---
+title: Simulate your AI app before you pay for it
+template: splash
+hero:
+  tagline: SimWork routes every AI call to a scripted LLM mock and every API call to an API mock — then evaluates every run. A full simulated run costs $0.
+  image:
+    file: ../../assets/logo.svg
+    alt: SimWork
+  actions:
+    - text: Get started in 15 minutes
+      link: /getting-started/
+      icon: right-arrow
+    - text: View on GitHub
+      link: https://github.com/SRogDev/SimWork
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+<CardGrid stagger>
+	<Card title="$0 by default" icon="rocket">
+		Zero real calls to LLM providers and zero real calls to world APIs in simulate mode. If a mock is missing, SimWork fails closed instead of silently falling back to a real call.
+	</Card>
+	<Card title="No harness rewrite" icon="puzzle">
+		Routing happens by configuration — environment variables and a base-URL swap. Your app logic stays untouched.
+	</Card>
+	<Card title="Deterministic" icon="dice">
+		Same seed + same scenario = same trace, same eval report. Reproduce any run exactly.
+	</Card>
+	<Card title="Evals on every run" icon="approve-check">
+		Tool correctness + task completion gate every simulated run, with a pass/fail report. An opt-in DeepEval judge is available when you want it.
+	</Card>
+</CardGrid>
+
+## See it work in one command
+
+```bash
+simwork demo
+# SimWork eval report — run: langgraph-demo-1 (seed 7)
+#   tool_correctness: 1.00 (threshold 1.00) PASS
+#   task_completion: 1.00 (threshold 1.00) PASS
+# Overall: PASS
+```
+
+The demo is a small LangGraph agent that asks about a ticket, calls one LLM and one world API — both mocked — records the run as a trace, and gates it. Nothing real is ever called.
+
+## Built for thousands of runs
+
+SimWork's first use case is pre-launch testing on a near-zero budget: thousands of simulated runs before launch, to know how good the app will be in the real world. `simwork scale` repeats the demo 1,000 times against shared mocks — 1000/1000 passed, one trace hash, 42.6s, $0.
+
+SimWork is open source (MIT). It simulates AI apps — it does not claim a simulated run proves real-world performance. Read the [design decisions](/reference/decisions/) for the honest limits.
