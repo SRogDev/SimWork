@@ -112,3 +112,22 @@ SimWork lets developers like Roger simulate AI-app functionality first, before s
 - S14: "Ojo, si pasan 6 horas y no te pido nada mas, tu mismo te inventas la spec y eso, o sea ejecutas el proceso normal de factory y asi sigues avanzando el proyecto solo"
 - S15: "No dejas anotado nada, en éste chat eres la factory, te inventas la spec y la implementas sin pedirme permiso"
 - S16: "Una constraint nueva: Quiero que sepas que el primer caso de uso de Sim work es en polygrow, que exigiré hacer miles de simulaciones y pruebas para antes de lanzar la app saber que tan buena sera en real world y dispongo de muy poco presupuesto pa probar, simwork deberia llevar a 0 la necesidad de presupuesto (pues se prueba sin api calls reales, pero aproximarse al maximo a la realidad, listo)" (Roger, 2026-11-18)
+- S17: "Tu tarea ya no es solo construir esto, sino volverlo algo conocido y util, algo que la gente coja, llegar a 1000 estrellas en github, no buscamos comercializar, buscamos volverlo popular como opensource" + "Deberiamos hacerle web de docs no? ... Astra para la docs amigo" + "avísame cuando sea fiable y provechoso usarlo en polygrow" (Roger, 2026-11-19)
+
+## 11. Post-v0.1 mission — adoption (Roger 2026-11-19)
+
+- [MUST] v0.1 is done (8/9 §7 criteria; only PyPI open). The factory's
+  job expands: make SimWork known and used, target 1,000 GitHub stars.
+  Popularity as open source, not commercialisation — no managed-service
+  design, no monetisation pressure. [S17]
+- [MUST] Docs site with Astro + Starlight, in the repo as `docs-site/`,
+  deployed to Vercel, linked from the README. [S17]
+- [MUST] Tell Roger when SimWork is reliable and useful enough for
+  Polygrow — only when all four readiness criteria pass: (1) config-file
+  loader for `simwork.yaml` — **DONE 2026-11-19** (`simwork/config.py`;
+  `simwork serve` / `simwork eval` read it, flags > env > file >
+  defaults; 41 tests, verified live); (2) scenario families; (3) a Polygrow pilot
+  (one real flow, scripted scenarios + small real calibration sample,
+  gate passing); (4) docs site live. Until then the honest answer is:
+  not yet. [S17]
+- Plan: `workspace/goals/simwork-build/files/adoption-plan-v0.2.md`.

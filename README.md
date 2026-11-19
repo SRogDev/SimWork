@@ -74,6 +74,29 @@ with SimWorkRouter.from_env() as router:  # reads SIMWORK_MODE / SIMWORK_SCENARI
     run_harness()  # $0, no real LLM calls
 ```
 
+## Configuration file (`simwork.yaml`)
+
+`simwork init` writes a `simwork.yaml` starter config, and `simwork serve` / `simwork eval` read it — no flags needed inside the project. The file is discovered by walking up from the current directory (or pass `--config FILE`); relative paths resolve against the file's own directory.
+
+```yaml
+mode: simulate                          # simulate or live (default live)
+scenario: scenarios/ticket-status.yaml  # required in simulate mode
+seed: 7                                 # optional run seed
+host: 127.0.0.1                         # fake-server bind host
+port: 0                                 # fake-server bind port (0 = ephemeral)
+eval:
+  trace: evals/ticket-status-trace.json # default trace for `simwork eval`
+  report: evals/report.json             # default report path for `simwork eval`
+```
+
+Precedence: **CLI flags > environment variables > config file > defaults**. So `simwork serve --port 8123` beats `SIMWORK_PORT`, which beats `port:` in the file. Loading is strict: an unknown key, a bad mode, or a malformed file fails closed with a visible error instead of running with wrong settings.
+
+```bash
+# Inside a project with simwork.yaml — no flags needed:
+simwork serve    # serves the scenario from the file
+simwork eval     # evaluates eval.trace, writes eval.report
+```
+
 ## Scenario files
 
 A scenario is a YAML file that scripts what the mock LLM says, turn by turn — no code needed. Loading is strict: a bad schema fails closed with `ScenarioError` instead of silently producing a wrong script.

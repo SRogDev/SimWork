@@ -27,6 +27,29 @@ simwork serve --scenario scenario.yaml --port 8123
 
 Command-line flags override the variables: `simwork serve --scenario FILE --host HOST --port PORT`.
 
+## Configuration file (`simwork.yaml`)
+
+`simwork init` writes a `simwork.yaml` starter config, and `simwork serve` / `simwork eval` read it — no flags needed inside the project. The file is discovered by walking up from the current directory (or pass `--config FILE`); relative paths resolve against the file's own directory.
+
+```yaml
+mode: simulate                          # simulate or live (default live)
+scenario: scenarios/ticket-status.yaml  # required in simulate mode
+seed: 7                                 # optional run seed
+host: 127.0.0.1                         # fake-server bind host
+port: 0                                 # fake-server bind port (0 = ephemeral)
+eval:
+  trace: evals/ticket-status-trace.json # default trace for `simwork eval`
+  report: evals/report.json             # default report path for `simwork eval`
+```
+
+Precedence: **CLI flags > environment variables > config file > defaults**. Loading is strict: an unknown key, a bad mode, or a malformed file fails closed with a visible error instead of running with wrong settings.
+
+```bash
+# Inside a project with simwork.yaml — no flags needed:
+simwork serve    # serves the scenario from the file
+simwork eval     # evaluates eval.trace, writes eval.report
+```
+
 ## From Python
 
 The same routing is available as a context manager — the harness only needs a base-URL swap:
@@ -43,5 +66,3 @@ with SimWorkRouter.from_env() as router:  # reads SIMWORK_MODE / SIMWORK_SCENARI
 ## Fail closed
 
 Simulate mode makes zero real calls to LLM providers, and fails closed — it errors visibly instead of silently falling back to a real call if a mock is missing or misconfigured. The default mode is `live` when `SIMWORK_MODE` is unset, so simulation is always an explicit opt-in, never silent interception.
-
-Note: `simwork.yaml` exists as the starter config, but no config-file loader reads it yet — today routing works through flags and environment variables only.

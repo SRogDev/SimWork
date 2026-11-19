@@ -1,6 +1,7 @@
 """SimWork — simulate AI apps in a fake world before spending real API calls."""
 
 from simwork.api_mock import ApiMockError, ApiMockStack, PrismMockServer, fetch_api_spec
+from simwork.config import ConfigError, SimWorkFileConfig, find_config_file, load_config_file
 from simwork.deepeval_judge import (
     JudgeError,
     check_judge_ready,
@@ -24,6 +25,7 @@ __all__ = [
     "ApiMockError",
     "ApiMockStack",
     "CONFIGURE_SIMWORK_PROMPT",
+    "ConfigError",
     "DemoError",
     "EvalReport",
     "InitError",
@@ -32,6 +34,7 @@ __all__ = [
     "PrismMockServer",
     "RoutingError",
     "SimWorkConfig",
+    "SimWorkFileConfig",
     "SimWorkRouter",
     "TraceError",
     "TraceRecorder",
@@ -42,9 +45,11 @@ __all__ = [
     "evaluate_run",
     "evaluate_run_with_judge",
     "fetch_api_spec",
+    "find_config_file",
     "init_project",
     "judge_metrics",
     "load_config",
+    "load_config_file",
     "load_trace",
     "prompt_text",
     "run_demo",

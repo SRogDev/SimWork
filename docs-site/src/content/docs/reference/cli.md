@@ -17,7 +17,8 @@ world API calls. Every simulated run costs $0 by default.
 Serve the fake OpenAI server from a scenario file (simulate mode).
 
 ```text
-usage: simwork serve [-h] [--scenario FILE] [--host HOST] [--port PORT]
+usage: simwork serve [-h] [--scenario FILE] [--config FILE] [--host HOST]
+                     [--port PORT]
 
 Start the scripted, deterministic fake OpenAI server from a YAML scenario file
 and print the env vars a harness needs to point at it. Runs until Ctrl-C. $0 —
@@ -27,6 +28,7 @@ no real LLM calls.
 | Flag | Meaning |
 |---|---|
 | `--scenario FILE` | YAML scenario file (overrides `SIMWORK_SCENARIO`) |
+| `--config FILE` | `simwork.yaml` config file (default: auto-discovered from the current directory up) |
 | `--host HOST` | Bind host (overrides `SIMWORK_HOST`, default `127.0.0.1`) |
 | `--port PORT` | Bind port (overrides `SIMWORK_PORT`, default `0` = ephemeral) |
 
@@ -60,8 +62,8 @@ See [API mocks](/guides/api-mocks/).
 Evaluate a recorded run trace (DeepEval harness).
 
 ```text
-usage: simwork eval [-h] --trace FILE [--report FILE] [--judge]
-                    [--judge-model MODEL] [--judge-max-calls N]
+usage: simwork eval [-h] [--trace FILE] [--config FILE] [--report FILE]
+                    [--judge] [--judge-model MODEL] [--judge-max-calls N]
                     [--judge-metrics NAMES]
 
 Evaluate a recorded run trace (JSON, see examples/) with the deterministic
@@ -74,7 +76,8 @@ model call).
 
 | Flag | Meaning |
 |---|---|
-| `--trace FILE` | JSON trace file of a recorded run |
+| `--trace FILE` | JSON trace file of a recorded run (default: `eval.trace` from `simwork.yaml`) |
+| `--config FILE` | `simwork.yaml` config file (default: auto-discovered from the current directory up) |
 | `--report FILE` | Also write the machine-readable JSON report to this file |
 | `--judge` | Also run DeepEval's own judge metrics (opt-in, costs real LLM calls for task completion; needs `simwork[deepeval]` + `OPENAI_API_KEY`) |
 | `--judge-model MODEL` | Model for the DeepEval judge (default: DeepEval's default) |

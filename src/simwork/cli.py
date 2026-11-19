@@ -18,13 +18,14 @@ import sys
 
 from simwork import __version__
 from simwork.api_mock import ApiMockError, ApiMockStack
+from simwork.config import ConfigError, load_file_config, resolve_config, resolve_eval
 from simwork.deepeval_judge import JudgeError, check_judge_ready, evaluate_run_with_judge
 from simwork.demo import DemoError, run_demo
 from simwork.eval import evaluate_run
 from simwork.trace import TraceError, load_trace, trace_hash
 from simwork.init import InitError, init_project
 from simwork.llm import ScenarioError
-from simwork.routing import RoutingError, SimWorkRouter, load_config
+from simwork.routing import RoutingError, SimWorkRouter
 from simwork.scale import DEFAULT_RUNS, ScaleError, run_scale
 from simwork.serving import serve
 
@@ -53,6 +54,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--scenario",
         metavar="FILE",
         help="YAML scenario file (overrides SIMWORK_SCENARIO)",
+    )
+    serve.add_argument(
+        "--config",
+        metavar="FILE",
+        default=None,
+        help="simwork.yaml config file (default: auto-discovered from the current directory up)",
     )
     serve.add_argument(
         "--host",
@@ -123,8 +130,14 @@ def build_parser() -> argparse.ArgumentParser:
     eval_cmd.add_argument(
         "--trace",
         metavar="FILE",
-        required=True,
-        help="JSON trace file of a recorded run",
+        default=None,
+        help="JSON trace file of a recorded run (default: eval.trace from simwork.yaml)",
+    )
+    eval_cmd.add_argument(
+        "--config",
+        metavar="FILE",
+        default=None,
+        help="simwork.yaml config file (default: auto-discovered from the current directory up)",
     )
     eval_cmd.add_argument(
         "--report",
@@ -247,17 +260,19 @@ def build_parser() -> argparse.ArgumentParser:
 def cmd_serve(args: argparse.Namespace) -> int:
     """Start the fake server from a scenario; block until Ctrl-C."""
     try:
+        file_config = load_file_config(args.config)
         env = dict(os.environ)
-        # `serve` is inherently simulate mode; flags override env vars.
+        # `serve` is inherently simulate mode; flags override env vars,
+        # env vars override the config file, the file overrides defaults.
         env["SIMWORK_MODE"] = "simulate"
-        if args.scenario:
-            env["SIMWORK_SCENARIO"] = args.scenario
-        if args.host:
-            env["SIMWORK_HOST"] = args.host
-        if args.port is not None:
-            env["SIMWORK_PORT"] = str(args.port)
-        config = load_config(env)
-    except (RoutingError, ValueError) as e:
+        config = resolve_config(
+            file_config,
+            env,
+            scenario=args.scenario,
+            host=args.host,
+            port=args.port,
+        )
+    except (RoutingError, ConfigError, ValueError) as e:
         print(f"simwork serve: error: {e}", file=sys.stderr)
         return 1
 
@@ -324,7 +339,19 @@ def cmd_eval(args: argparse.Namespace) -> int:
             print(f"simwork eval: error: {e}", file=sys.stderr)
             return 1
     try:
-        trace = load_trace(args.trace)
+        file_config = load_file_config(args.config)
+    except ConfigError as e:
+        print(f"simwork eval: error: {e}", file=sys.stderr)
+        return 1
+    trace_path, report_path = resolve_eval(file_config, trace=args.trace, report=args.report)
+    if trace_path is None:
+        print(
+            "simwork eval: error: no trace given (--trace) and no eval.trace in simwork.yaml",
+            file=sys.stderr,
+        )
+        return 1
+    try:
+        trace = load_trace(trace_path)
         if args.judge:
             report = evaluate_run_with_judge(
                 trace,
@@ -341,14 +368,14 @@ def cmd_eval(args: argparse.Namespace) -> int:
         print(f"simwork eval: error: {e}", file=sys.stderr)
         return 1
     print(report.to_text(), end="")
-    if args.report:
+    if report_path:
         try:
-            with open(args.report, "w", encoding="utf-8") as f:
+            with open(report_path, "w", encoding="utf-8") as f:
                 f.write(report.to_json())
         except OSError as e:
             print(f"simwork eval: error: cannot write report: {e}", file=sys.stderr)
             return 1
-        print(f"Report written to {args.report}")
+        print(f"Report written to {report_path}")
     return 0 if report.passed else 1
 
 
