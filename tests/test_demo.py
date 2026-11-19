@@ -128,6 +128,10 @@ def test_demo_messages_to_trace(demo_deps):
 
 
 def test_demo_missing_prism_fails_closed(monkeypatch):
+    # Isolate the prism path: pretend the demo deps are installed, so
+    # this test fails on the missing prism even in environments (like
+    # CI) where both are missing — the deps error wins there by design.
+    monkeypatch.setattr("simwork.demo._check_demo_deps", lambda: None)
     monkeypatch.setattr(shutil, "which", lambda name: None)
     with pytest.raises(DemoError, match="prism"):
         run_demo()

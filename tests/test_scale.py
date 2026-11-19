@@ -73,6 +73,10 @@ def test_scale_rejects_non_positive_runs():
 
 
 def test_scale_missing_prism_fails_closed(monkeypatch):
+    # Isolate the prism path: pretend the demo deps are installed, so
+    # this test fails on the missing prism even in environments (like
+    # CI) where both are missing — the deps error wins there by design.
+    monkeypatch.setattr("simwork.demo._check_demo_deps", lambda: None)
     monkeypatch.setattr(shutil, "which", lambda name: None)
     with pytest.raises(ScaleError, match="prism"):
         run_scale(runs=2)
