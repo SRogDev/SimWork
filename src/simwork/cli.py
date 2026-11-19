@@ -4,7 +4,9 @@ Phase 1: `serve` starts the fake OpenAI server from a scenario file so
 an unmodified harness can point at it with a base-URL swap. `mock`
 (Phase 2) and `eval` (Phase 3) are wired — `eval --judge` adds the
 opt-in DeepEval judge path; `init` lands in Phase 4, per the spec.
-`demo` (Phase 4, task 3) runs the LangGraph demo end-to-end.
+`demo` (Phase 4, task 3) runs the LangGraph demo end-to-end. `scale`
+(§7 check-off) repeats the demo N times against shared mocks and
+checks every run is identical and passes.
 """
 
 from __future__ import annotations
@@ -23,6 +25,7 @@ from simwork.trace import TraceError, load_trace, trace_hash
 from simwork.init import InitError, init_project
 from simwork.llm import ScenarioError
 from simwork.routing import RoutingError, SimWorkRouter, load_config
+from simwork.scale import DEFAULT_RUNS, ScaleError, run_scale
 from simwork.serving import serve
 
 
@@ -209,6 +212,35 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="also write the machine-readable JSON report to this file",
     )
+
+    scale_cmd = sub.add_parser(
+        "scale",
+        help="repeat the LangGraph demo N times and check every run is identical and passes",
+        description=(
+            "Repeat the LangGraph demo N times (default 1000) against the "
+            "same already-running mocks — one fake OpenAI server + one Prism "
+            "mock, the graph built once — and check every run passes the $0 "
+            "gate with the same trace hash. This is the spec's scale smoke "
+            "test (§7): thousands of simulated runs at $0 before launch, one "
+            "deterministic per-run result each. Prints a summary; exits 0 "
+            "when every run passed and all hashes are identical, 1 otherwise. "
+            "Needs the demo dependencies (`uv sync --group demo`) and the "
+            "`prism` binary. $0 — no real LLM or world-API calls."
+        ),
+    )
+    scale_cmd.add_argument(
+        "--runs",
+        metavar="N",
+        type=int,
+        default=DEFAULT_RUNS,
+        help=f"number of runs (default {DEFAULT_RUNS})",
+    )
+    scale_cmd.add_argument(
+        "--report",
+        metavar="FILE",
+        default=None,
+        help="also write the machine-readable JSON report to this file",
+    )
     return parser
 
 
@@ -368,6 +400,26 @@ def cmd_demo(args: argparse.Namespace) -> int:
     return 0 if report.passed else 1
 
 
+def cmd_scale(args: argparse.Namespace) -> int:
+    """Repeat the demo; print the batch summary; exit on the verdict."""
+    print(f"Running the demo {args.runs} time(s) against shared mocks ($0)…")
+    try:
+        report = run_scale(runs=args.runs)
+    except ScaleError as e:
+        print(f"simwork scale: error: {e}", file=sys.stderr)
+        return 1
+    print(report.to_text(), end="")
+    if args.report:
+        try:
+            with open(args.report, "w", encoding="utf-8") as f:
+                f.write(report.to_json())
+        except OSError as e:
+            print(f"simwork scale: error: cannot write report: {e}", file=sys.stderr)
+            return 1
+        print(f"Report written to {args.report}")
+    return 0 if report.passed else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -381,6 +433,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_init(args)
     if args.command == "demo":
         return cmd_demo(args)
+    if args.command == "scale":
+        return cmd_scale(args)
     parser.print_help()
     return 0
 

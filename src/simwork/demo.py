@@ -18,9 +18,11 @@ hint when they are missing, and `simwork demo` reports the same.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import shutil
 import tempfile
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -28,7 +30,7 @@ import yaml
 
 from simwork.api_mock import PrismMockServer
 from simwork.eval import EvalReport, evaluate_run
-from simwork.llm import FakeOpenAIServer, parse_scenario
+from simwork.llm import FakeOpenAIServer, ScriptedLLM, parse_scenario
 from simwork.trace import Trace, validate_trace
 
 _DEMO_DEPS_HINT = (
@@ -92,7 +94,10 @@ paths:
               example: {ticket_id: "T-123", status: "shipped"}
 """
 
-_EXPECTED: dict[str, Any] = {
+# The expected outcome of the demo run, shared with the scale batch
+# (`simwork.scale` repeats this run): the tool call the agent should
+# make, and the facts the final answer should cover.
+EXPECTED: dict[str, Any] = {
     "tool_calls": [{"name": "lookup_ticket", "arguments": {"ticket_id": "T-123"}}],
     "final_answer_contains": ["shipped"],
 }
@@ -215,6 +220,24 @@ def run_demo() -> tuple[Trace, EvalReport]:
     evaluates it. Returns `(trace, report)`; the caller decides what
     to do with the report (the CLI prints it and exits on the gate).
     """
+    with demo_servers() as (_llm, llm_server, api_server):
+        app = build_graph(api_server.base_url, llm_server.base_url)
+        result = app.invoke({"messages": [{"role": "user", "content": USER_MESSAGE}]})
+    trace = messages_to_trace(result["messages"], run_id=RUN_ID, seed=SEED, expected=EXPECTED)
+    return trace, evaluate_run(trace)
+
+
+@contextlib.contextmanager
+def demo_servers() -> Iterator[tuple[ScriptedLLM, FakeOpenAIServer, PrismMockServer]]:
+    """Start both demo mocks and yield `(llm, llm_server, api_server)`.
+
+    The fake OpenAI server (demo scenario) and the Prism mock of the
+    bundled ticket spec, both on localhost — $0, no real calls. The
+    caller owns the graph and the runs: the scripted LLM is shared
+    across runs, so call `llm.reset()` before each run to replay the
+    scenario from the first turn. Exiting the context stops both
+    servers.
+    """
     if shutil.which("prism") is None:
         raise DemoError(
             f"the `prism` binary was not found on PATH — install it with {_PRISM_INSTALL_HINT}"
@@ -231,7 +254,4 @@ def run_demo() -> tuple[Trace, EvalReport]:
             FakeOpenAIServer(llm) as llm_server,
             PrismMockServer(spec_path) as api_server,
         ):
-            app = build_graph(api_server.base_url, llm_server.base_url)
-            result = app.invoke({"messages": [{"role": "user", "content": USER_MESSAGE}]})
-        trace = messages_to_trace(result["messages"], run_id=RUN_ID, seed=SEED, expected=_EXPECTED)
-        return trace, evaluate_run(trace)
+            yield llm, llm_server, api_server
