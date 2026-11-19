@@ -238,11 +238,14 @@ def demo_servers() -> Iterator[tuple[ScriptedLLM, FakeOpenAIServer, PrismMockSer
     scenario from the first turn. Exiting the context stops both
     servers.
     """
+    # Deps first: the langgraph-missing hint must win over the prism hint
+    # when both are missing (e.g. in CI, which has neither), so the
+    # fail-closed tests stay green without prism installed.
+    _check_demo_deps()
     if shutil.which("prism") is None:
         raise DemoError(
             f"the `prism` binary was not found on PATH — install it with {_PRISM_INSTALL_HINT}"
         )
-    _check_demo_deps()
     scenario = parse_scenario(_SCENARIO_YAML, source="langgraph-demo scenario")
     with tempfile.TemporaryDirectory(prefix="simwork-demo-") as tmp:
         spec_path = Path(tmp) / "tickets-api.json"

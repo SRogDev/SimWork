@@ -67,15 +67,15 @@ SimWork lets developers like Roger simulate AI-app functionality first, before s
 
 ## 7. Acceptance criteria
 
-- [ ] `pip install simwork` / `uv add simwork` installs, `simwork --help` works, and `simwork init` generates a runnable starter in a fresh directory. [S10]
-- [ ] Demo LangGraph harness runs end-to-end with `SIMWORK_MODE=simulate` and makes zero real HTTP calls to any LLM provider or real world API (verified by a test that asserts no real host is contacted). [S9–S10]
-- [ ] Same seed + same scenario run twice produces an identical trace hash and identical eval report. [S10]
-- [ ] `simwork eval` runs DeepEval metrics (at minimum: tool correctness, task completion) and exits non-zero when the gate fails, with a report file. [S7, S10]
-- [ ] `simwork mock --api <name>` fetches the spec from APIs.guru and serves a Prism mock for it; the demo's world API is served this way. [S4]
-- [ ] A stateful stub test passes: create-then-read returns the created record. [S4]
-- [ ] `pytest` suite green in CI; README documents the 15-minute setup, the pre-made prompt, and the $0 default. [S1, S10]
-- [ ] No merge to `main` has happened without Roger's explicit confirmation for that series. [S1, S8]
-- [ ] A thousand-run batch completes at $0 with a deterministic per-run report each (scale smoke test), so the Polygrow pre-launch use case is demonstrably feasible. [S16]
+- [ ] `pip install simwork` / `uv add simwork` installs, `simwork --help` works, and `simwork init` generates a runnable starter in a fresh directory. [S10] — **Verified 2026-11-19 except PyPI:** `pip install .` in a fresh venv and `pip install git+https://github.com/SRogDev/SimWork` both install; `simwork --help` / `--version` work (0.1.0); `simwork init` in a fresh directory scaffolds a starter whose generated suite passes (`1 passed`) and whose trace passes `simwork eval` (exit 0). `pip install simwork` from PyPI does NOT resolve — the package is not published there; publication is a release decision for Roger.
+- [x] Demo LangGraph harness runs end-to-end with `SIMWORK_MODE=simulate` and makes zero real HTTP calls to any LLM provider or real world API (verified by a test that asserts no real host is contacted). [S9–S10] — Verified 2026-11-19: `simwork demo` passes the $0 gate; `tests/test_demo.py::test_demo_makes_no_real_network_calls` guards the socket layer.
+- [x] Same seed + same scenario run twice produces an identical trace hash and identical eval report. [S10] — Verified live 2026-11-19: two demo runs, one hash `f7af385c…`, both reports PASS; `simwork scale` repeats it 1000 times with one hash.
+- [x] `simwork eval` runs DeepEval metrics (at minimum: tool correctness, task completion) and exits non-zero when the gate fails, with a report file. [S7, S10] — Verified live 2026-11-19: failing trace → exit 1 + FAIL report; passing trace → exit 0; `--report` writes the machine-readable report.
+- [x] `simwork mock --api <name>` fetches the spec from APIs.guru and serves a Prism mock for it; the demo's world API is served this way. [S4] — Verified live 2026-11-19: `simwork mock --api httpbin.org` fetched `httpbin.org-0.9.2.json` from APIs.guru; Prism served it (`GET /get` → 200). Demo world API: bundled ticket spec via Prism.
+- [x] A stateful stub test passes: create-then-read returns the created record. [S4] — Verified by `tests/test_stateful.py` in the green suite (2026-11-19).
+- [ ] `pytest` suite green in CI; README documents the 15-minute setup, the pre-made prompt, and the $0 default. [S1, S10] — **Partly verified 2026-11-19:** locally 204 passed, 2 skipped (deepeval not installed, by design), `ruff check` clean; README documents the under-15-minute setup, the pre-made prompt and the $0 default. CI was RED on the two previous pushes (`bea681d`, `ad3019c`) for an ordering bug in `demo_servers()` — the prism check ran before the demo-deps check, so in CI (no prism, no demo group) the langgraph-missing tests failed. Fixed in the 2026-11-19 landing (deps check first); CI green pending the run on that push.
+- [x] No merge to `main` has happened without Roger's explicit confirmation for that series. [S1, S8] — Verified 2026-11-19: there are no PR merges at all; landings are direct pushes to `main` under the SimWork-only autonomy order (Roger 2026-11-15), one small task per run, each reported in the factory chat for correction.
+- [x] A thousand-run batch completes at $0 with a deterministic per-run report each (scale smoke test), so the Polygrow pre-launch use case is demonstrably feasible. [S16] — Verified live 2026-11-19: `simwork scale` 1000/1000 passed, one trace hash, 42.6s, $0.
 
 ## 8. Assumptions
 
