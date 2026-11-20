@@ -1,0 +1,10 @@
+# RAG assistant recipe — scripted LLM turns.
+# Turn 1 calls the retrieval tool; turn 2 answers grounded in the
+# doc the tool returns (see docs-api.yaml for the doc text).
+name: rag-assistant
+seed: 7
+turns:
+  - tool_calls:
+      - name: retrieve_docs
+        arguments: {query: "What is the refund window?"}
+  - content: "The refund window is 30 days from delivery, per the returns policy."

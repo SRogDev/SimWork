@@ -35,6 +35,7 @@ export default defineConfig({
             { label: 'AI configuration prompt', slug: 'guides/ai-prompt' },
             { label: 'Scale: 1,000 runs', slug: 'guides/scale' },
             { label: 'Polygrow pilot', slug: 'guides/polygrow-pilot' },
+            { label: 'Recipes', slug: 'guides/recipes' },
           ],
         },
         {

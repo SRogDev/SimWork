@@ -1,0 +1,39 @@
+# Docs-search API — the world API the RAG recipe's tool calls.
+# Served as a mock by Prism (`run.py` starts it from this file).
+# The example is the doc the retrieval tool returns; keep it in sync
+# with scenarios/rag-assistant.yaml (the scripted answer quotes it)
+# and evals/rag-assistant-trace.json (the recorded tool result).
+openapi: 3.0.0
+info:
+  title: Docs Search API
+  version: 1.0.0
+paths:
+  /search:
+    get:
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        title:
+                          type: string
+                        text:
+                          type: string
+              example:
+                results:
+                  - title: "Returns policy"
+                    text: "The refund window is 30 days from delivery."
