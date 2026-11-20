@@ -1,0 +1,52 @@
+# Polygrow pilot — calibration sample
+#
+# A small set of real user messages with the intent the real Polygrow
+# Mind code assigns them. Every expectation is grounded in the real
+# code (`~/workspace/polygrow-main`, `main` @ `7655a65`), not invented:
+#
+# - `expected_intent` / `expected_confidence`: the deterministic rules
+#   in `ai_services/app/ai_mind/router.py`, ported verbatim into
+#   `simwork.pilot.classify_deterministic` and checked by
+#   `tests/test_pilot.py::test_calibration_sample_matches_real_rules`.
+# - `expected_bi`: `is_bi_request` in the same file — a BI message does
+#   not get an intent from the router; the planner emits `delegate:bi`
+#   (`expected_planner_action`, `nodes.py:planner_node`).
+# - `llm_classified: true`: no deterministic rule fires, so the real
+#   node falls through to the LLM call (Jev unavailable in sim) — the
+#   expectation is the scripted scenario's ground truth, verified by
+#   the end-to-end pilot run, not by the pure-rules test.
+#
+# `has_active_artifact` matters: `is_artifact_modify_request` only
+# fires when an artifact is already active in state.
+
+- message: "crea un producto"
+  expected_intent: artifact_create
+  expected_confidence: 0.9
+  source: "router.py:is_artifact_create_request"
+
+- message: "I want to create a personalized agent"
+  expected_intent: personalized_agent_create
+  expected_confidence: 0.9
+  source: "router.py:is_personalized_agent_creation_request"
+
+- message: "crear un workflow"
+  expected_intent: workflow_create
+  expected_confidence: 0.9
+  source: "router.py:is_workflow_creation_request (via workflow_engine/conversation.py)"
+
+- message: "¿Por qué cayó la venta este mes?"
+  expected_intent: null
+  expected_bi: true
+  expected_planner_action: "delegate:bi"
+  source: "router.py:is_bi_request + nodes.py:planner_node"
+
+- message: "make it bigger"
+  has_active_artifact: false
+  expected_intent: null
+  source: "router.py:is_artifact_modify_request — needs an active artifact, none here"
+
+- message: "Hola, ¿qué puedes hacer por mi negocio?"
+  expected_intent: general_chat
+  expected_confidence: 0.85
+  llm_classified: true
+  source: "pilot scenario (simwork.pilot) — the pilot's own message, verified by the end-to-end run"

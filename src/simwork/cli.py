@@ -31,6 +31,7 @@ from simwork.families import load_family
 from simwork.trace import TraceError, load_trace, trace_hash
 from simwork.init import InitError, init_project
 from simwork.llm import ScenarioError
+from simwork.pilot import PilotError, run_pilot
 from simwork.routing import RoutingError, SimWorkRouter
 from simwork.scale import DEFAULT_RUNS, ScaleError, run_scale
 from simwork.serving import serve
@@ -291,6 +292,34 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="also write the machine-readable JSON report to this file",
     )
+
+    pilot_cmd = sub.add_parser(
+        "pilot",
+        help="run the Polygrow pilot end-to-end (simulate mode)",
+        description=(
+            "Run the Polygrow pilot end-to-end in simulate mode: one real "
+            "Polygrow flow (a Mind chat turn for a general-chat message) "
+            "with the LLM call routed to the scripted fake OpenAI server, "
+            "the business context read from a Prism mock and the memory "
+            "write proven by a stateful-stub read-back, then the $0 eval "
+            "gate on the recorded trace. Prints the pass/fail report, the "
+            "trace hash and the honest finding about the real flow. Needs "
+            "the demo dependencies (`uv sync --group demo`) and the "
+            "`prism` binary. $0 — no real LLM or world-API calls."
+        ),
+    )
+    pilot_cmd.add_argument(
+        "--trace",
+        metavar="FILE",
+        default=None,
+        help="also write the recorded trace as JSON to this file",
+    )
+    pilot_cmd.add_argument(
+        "--report",
+        metavar="FILE",
+        default=None,
+        help="also write the machine-readable JSON report to this file",
+    )
     return parser
 
 
@@ -525,6 +554,40 @@ def cmd_scale(args: argparse.Namespace) -> int:
     return 0 if report.passed else 1
 
 
+def cmd_pilot(args: argparse.Namespace) -> int:
+    """Run the Polygrow pilot; print the report and finding; exit on the gate."""
+    try:
+        trace, report, result = run_pilot()
+    except PilotError as e:
+        print(f"simwork pilot: error: {e}", file=sys.stderr)
+        return 1
+    print(report.to_text(), end="")
+    print(f"Trace hash: {trace_hash(trace)}")
+    print(
+        f"Pilot: intent {result['intent']} "
+        f"(confidence {result['confidence']}) → route {result['route']}"
+    )
+    print(f"Finding: {result['finding']}")
+    if args.trace:
+        try:
+            with open(args.trace, "w", encoding="utf-8") as f:
+                json.dump(trace, f, indent=2, sort_keys=True)
+                f.write("\n")
+        except OSError as e:
+            print(f"simwork pilot: error: cannot write trace: {e}", file=sys.stderr)
+            return 1
+        print(f"Trace written to {args.trace}")
+    if args.report:
+        try:
+            with open(args.report, "w", encoding="utf-8") as f:
+                f.write(report.to_json())
+        except OSError as e:
+            print(f"simwork pilot: error: cannot write report: {e}", file=sys.stderr)
+            return 1
+        print(f"Report written to {args.report}")
+    return 0 if report.passed else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -540,6 +603,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_demo(args)
     if args.command == "scale":
         return cmd_scale(args)
+    if args.command == "pilot":
+        return cmd_pilot(args)
     parser.print_help()
     return 0
 

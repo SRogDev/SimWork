@@ -133,6 +133,14 @@ SimWork lets developers like Roger simulate AI-app functionality first, before s
   seeded parameter picks; 37 tests; verified live: 10/10 passed with
   10 distinct hashes, repeat batch identical); (3) a Polygrow pilot
   (one real flow, scripted scenarios + small real calibration sample,
-  gate passing); (4) docs site live. Until then the honest answer is:
+  gate passing) — **DONE 2026-11-20** (`simwork.pilot`; `simwork pilot`
+  runs one real Mind chat turn end-to-end in simulate mode: real
+  routing rules + real intent prompt verbatim from the Polygrow
+  checkout `main` @ `7655a65`, context from a Prism mock, memory
+  write proven by a stateful-stub read-back, calibration sample in
+  `examples/polygrow-pilot/calibration.yaml`; 10 new tests; verified
+  live: two runs, identical hash `2f05d6cc…`, gate PASS, $0 — and it
+  surfaced a real gap: a confident general_chat turn returns "No
+  response generated." in the real graph); (4) docs site live. Until then the honest answer is:
   not yet. [S17]
 - Plan: `workspace/goals/simwork-build/files/adoption-plan-v0.2.md`.

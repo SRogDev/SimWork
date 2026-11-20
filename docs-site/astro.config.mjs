@@ -34,6 +34,7 @@ export default defineConfig({
             { label: 'Evals & the $0 gate', slug: 'guides/evals' },
             { label: 'AI configuration prompt', slug: 'guides/ai-prompt' },
             { label: 'Scale: 1,000 runs', slug: 'guides/scale' },
+            { label: 'Polygrow pilot', slug: 'guides/polygrow-pilot' },
           ],
         },
         {

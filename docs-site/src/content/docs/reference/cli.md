@@ -1,12 +1,12 @@
 ---
 title: CLI reference
-description: Every SimWork command and flag — serve, mock, eval, init, demo, scale.
+description: Every SimWork command and flag — serve, mock, eval, init, demo, scale, pilot.
 ---
 
 SimWork 0.1.0. Top level:
 
 ```text
-usage: simwork [-h] [--version] {serve,mock,eval,init,demo,scale} ...
+usage: simwork [-h] [--version] {serve,mock,eval,init,demo,scale,pilot} ...
 
 SimWork — simulate AI-app functionality first, before spending real LLM or
 world API calls. Every simulated run costs $0 by default.
@@ -157,3 +157,27 @@ $0 — no real LLM or world-API calls.
 | `--report FILE` | Also write the machine-readable JSON report to this file |
 
 See [Scale: 1,000 runs](/guides/scale/).
+
+## `simwork pilot`
+
+Run the Polygrow pilot end-to-end (simulate mode).
+
+```text
+usage: simwork pilot [-h] [--trace FILE] [--report FILE]
+
+Run the Polygrow pilot end-to-end in simulate mode: one real Polygrow flow
+(a Mind chat turn for a general-chat message) with the LLM call routed to the
+scripted fake OpenAI server, the business context read from a Prism mock and
+the memory write proven by a stateful-stub read-back, then the $0 eval gate
+on the recorded trace. Prints the pass/fail report, the trace hash and the
+honest finding about the real flow. Needs the demo dependencies
+(`uv sync --group demo`) and the `prism` binary. $0 — no real LLM or
+world-API calls.
+```
+
+| Flag | Meaning |
+|---|---|
+| `--trace FILE` | Also write the recorded trace as JSON to this file |
+| `--report FILE` | Also write the machine-readable JSON report to this file |
+
+See [Polygrow pilot](/guides/polygrow-pilot/).
