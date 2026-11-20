@@ -27,6 +27,7 @@ from __future__ import annotations
 import json
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from simwork.demo import (
@@ -40,6 +41,7 @@ from simwork.demo import (
     messages_to_trace,
 )
 from simwork.eval import evaluate_run
+from simwork.families import FamilyError, ScenarioFamily, load_family
 from simwork.trace import trace_hash
 
 DEFAULT_RUNS = 1000
@@ -73,14 +75,19 @@ class ScaleRunResult:
 class ScaleReport:
     """The batch report: one per-run result each, plus the verdict.
 
-    `passed` is true only when every run passed the $0 gate and every
-    run produced the same trace hash — a batch of identical runs that
-    all pass is the scale criterion; a batch that diverges is not.
+    `passed` is true only when every run passed the $0 gate and — in
+    single-scenario mode — every run produced the same trace hash: a
+    batch of identical runs that all pass is the scale criterion; a
+    batch that diverges is not. In family mode (`hashes_must_match`
+    false) the runs are *meant* to differ — one member per run — so
+    the verdict only requires every run to pass the gate.
     """
 
     runs: int
     results: tuple[ScaleRunResult, ...] = field(default_factory=tuple)
     elapsed_seconds: float = 0.0
+    family: str | None = None
+    hashes_must_match: bool = True
 
     @property
     def passed_runs(self) -> int:
@@ -96,7 +103,9 @@ class ScaleReport:
 
     @property
     def passed(self) -> bool:
-        return self.failed_runs == 0 and len(self.distinct_hashes) == 1
+        return self.failed_runs == 0 and (
+            not self.hashes_must_match or len(self.distinct_hashes) == 1
+        )
 
     @property
     def runs_per_second(self) -> float:
@@ -110,6 +119,8 @@ class ScaleReport:
             "passed": self.passed,
             "passed_runs": self.passed_runs,
             "failed_runs": self.failed_runs,
+            "family": self.family,
+            "hashes_must_match": self.hashes_must_match,
             "distinct_hashes": list(self.distinct_hashes),
             "elapsed_seconds": round(self.elapsed_seconds, 3),
             "runs_per_second": round(self.runs_per_second, 2),
@@ -126,9 +137,13 @@ class ScaleReport:
             f"SimWork scale report — {self.runs} runs in {self.elapsed_seconds:.1f}s "
             f"({self.runs_per_second:.1f} runs/s)",
             f"  passed: {self.passed_runs}/{self.runs}",
-            f"  distinct trace hashes: {len(self.distinct_hashes)}"
-            + (f" ({self.distinct_hashes[0][:12]}…)" if self.distinct_hashes else ""),
         ]
+        if self.family is not None:
+            lines.append(f"  family: {self.family} — one member per run, distinct hashes expected")
+        lines.append(
+            f"  distinct trace hashes: {len(self.distinct_hashes)}"
+            + (f" ({self.distinct_hashes[0][:12]}…)" if self.distinct_hashes else "")
+        )
         failures = [r for r in self.results if not r.passed]
         for failure in failures[:_MAX_FAILURES_SHOWN]:
             lines.append(f"  run {failure.index}: FAILED — {failure.error or 'gate failed'}")
@@ -138,15 +153,31 @@ class ScaleReport:
         return "\n".join(lines) + "\n"
 
 
-def run_scale(runs: int = DEFAULT_RUNS) -> ScaleReport:
+def run_scale(
+    runs: int = DEFAULT_RUNS,
+    family: ScenarioFamily | str | Path | None = None,
+) -> ScaleReport:
     """Run the demo `runs` times against shared mocks; return the report.
 
     Fails closed (`ScaleError`) on a non-positive run count or on a
     missing mock/dependency; per-run failures are recorded in the
     report instead of aborting the batch.
+
+    With `family` (a `ScenarioFamily`, or a path to a family YAML
+    file), run `i` uses family member `i-1`: the scripted LLM's script
+    is swapped per run, so the batch covers a thousand different
+    situations instead of one repeated scenario. The verdict then
+    requires every run to pass the gate; the trace hashes are expected
+    to differ.
     """
     if runs < 1:
         raise ScaleError(f"runs must be a positive integer, got {runs}")
+    family_obj: ScenarioFamily | None = None
+    if family is not None:
+        try:
+            family_obj = family if isinstance(family, ScenarioFamily) else load_family(family)
+        except FamilyError as e:
+            raise ScaleError(str(e)) from None
     try:
         with demo_servers() as (llm, llm_server, api_server):
             app = build_graph(api_server.base_url, llm_server.base_url)
@@ -154,10 +185,18 @@ def run_scale(runs: int = DEFAULT_RUNS) -> ScaleReport:
             start = time.monotonic()
             for index in range(1, runs + 1):
                 try:
-                    llm.reset()
+                    if family_obj is not None:
+                        member = family_obj.member(index - 1)
+                        llm.replace_script(member.scenario.turns, seed=member.seed)
+                        expected: dict[str, Any] | None = member.expected
+                        seed = member.seed
+                    else:
+                        llm.reset()
+                        expected = EXPECTED
+                        seed = SEED
                     result = app.invoke({"messages": [{"role": "user", "content": USER_MESSAGE}]})
                     trace = messages_to_trace(
-                        result["messages"], run_id=RUN_ID, seed=SEED, expected=EXPECTED
+                        result["messages"], run_id=RUN_ID, seed=seed, expected=expected
                     )
                     report = evaluate_run(trace)
                     results.append(
@@ -170,7 +209,11 @@ def run_scale(runs: int = DEFAULT_RUNS) -> ScaleReport:
                         ScaleRunResult(index=index, trace_hash=None, passed=False, error=str(e))
                     )
             return ScaleReport(
-                runs=runs, results=tuple(results), elapsed_seconds=time.monotonic() - start
+                runs=runs,
+                results=tuple(results),
+                elapsed_seconds=time.monotonic() - start,
+                family=family_obj.name if family_obj is not None else None,
+                hashes_must_match=family_obj is None,
             )
     except DemoError as e:
         raise ScaleError(str(e)) from e

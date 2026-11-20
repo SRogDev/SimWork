@@ -12,9 +12,14 @@ checks every run is identical and passes.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import sys
+import tempfile
+from pathlib import Path
+
+import yaml
 
 from simwork import __version__
 from simwork.api_mock import ApiMockError, ApiMockStack
@@ -22,6 +27,7 @@ from simwork.config import ConfigError, load_file_config, resolve_config, resolv
 from simwork.deepeval_judge import JudgeError, check_judge_ready, evaluate_run_with_judge
 from simwork.demo import DemoError, run_demo
 from simwork.eval import evaluate_run
+from simwork.families import load_family
 from simwork.trace import TraceError, load_trace, trace_hash
 from simwork.init import InitError, init_project
 from simwork.llm import ScenarioError
@@ -54,6 +60,22 @@ def build_parser() -> argparse.ArgumentParser:
         "--scenario",
         metavar="FILE",
         help="YAML scenario file (overrides SIMWORK_SCENARIO)",
+    )
+    serve.add_argument(
+        "--family",
+        metavar="FILE",
+        default=None,
+        help=(
+            "YAML scenario family file: serve one member of it instead "
+            "of a plain scenario (mutually exclusive with --scenario)"
+        ),
+    )
+    serve.add_argument(
+        "--member",
+        metavar="N",
+        type=int,
+        default=None,
+        help="family member to serve (default 0; needs --family)",
     )
     serve.add_argument(
         "--config",
@@ -233,12 +255,16 @@ def build_parser() -> argparse.ArgumentParser:
             "Repeat the LangGraph demo N times (default 1000) against the "
             "same already-running mocks — one fake OpenAI server + one Prism "
             "mock, the graph built once — and check every run passes the $0 "
-            "gate with the same trace hash. This is the spec's scale smoke "
-            "test (§7): thousands of simulated runs at $0 before launch, one "
-            "deterministic per-run result each. Prints a summary; exits 0 "
-            "when every run passed and all hashes are identical, 1 otherwise. "
-            "Needs the demo dependencies (`uv sync --group demo`) and the "
-            "`prism` binary. $0 — no real LLM or world-API calls."
+            "gate with the same trace hash. With --family, run i uses "
+            "family member i-1 instead, so the batch covers different "
+            "situations and the verdict only requires every run to pass. "
+            "This is the spec's scale smoke test (§7): thousands of "
+            "simulated runs at $0 before launch, one deterministic "
+            "per-run result each. Prints a summary; exits 0 when every "
+            "run passed (and all hashes are identical, in single-scenario "
+            "mode), 1 otherwise. Needs the demo dependencies "
+            "(`uv sync --group demo`) and the `prism` binary. $0 — no real "
+            "LLM or world-API calls."
         ),
     )
     scale_cmd.add_argument(
@@ -247,6 +273,17 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=DEFAULT_RUNS,
         help=f"number of runs (default {DEFAULT_RUNS})",
+    )
+    scale_cmd.add_argument(
+        "--family",
+        metavar="FILE",
+        default=None,
+        help=(
+            "YAML scenario family file: run i uses family member i-1, "
+            "so the batch covers different situations instead of one "
+            "repeated scenario (the verdict then only requires every "
+            "run to pass the gate)"
+        ),
     )
     scale_cmd.add_argument(
         "--report",
@@ -258,33 +295,74 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def cmd_serve(args: argparse.Namespace) -> int:
-    """Start the fake server from a scenario; block until Ctrl-C."""
+    """Start the fake server from a scenario; block until Ctrl-C.
+
+    With `--family FILE [--member N]` the member's scenario is
+    materialised to a temporary file and served through the same path
+    as a plain scenario file; the temp directory lives until the
+    server stops.
+    """
     try:
-        file_config = load_file_config(args.config)
-        env = dict(os.environ)
-        # `serve` is inherently simulate mode; flags override env vars,
-        # env vars override the config file, the file overrides defaults.
-        env["SIMWORK_MODE"] = "simulate"
-        config = resolve_config(
-            file_config,
-            env,
-            scenario=args.scenario,
-            host=args.host,
-            port=args.port,
-        )
+        with contextlib.ExitStack() as stack:
+            scenario_override = args.scenario
+            family_label = None
+            if args.member is not None and args.family is None:
+                print("simwork serve: error: --member needs --family", file=sys.stderr)
+                return 1
+            if args.family is not None:
+                if args.scenario is not None:
+                    print(
+                        "simwork serve: error: --family and --scenario are mutually exclusive",
+                        file=sys.stderr,
+                    )
+                    return 1
+                member_index = args.member if args.member is not None else 0
+                if member_index < 0:
+                    print(
+                        "simwork serve: error: --member must be a non-negative integer",
+                        file=sys.stderr,
+                    )
+                    return 1
+                family = load_family(args.family)
+                member = family.member(member_index)
+                tmp = stack.enter_context(tempfile.TemporaryDirectory(prefix="simwork-family-"))
+                scenario_path = Path(tmp) / "scenario.yaml"
+                scenario_path.write_text(
+                    yaml.safe_dump(member.scenario.to_dict(), sort_keys=False),
+                    encoding="utf-8",
+                )
+                scenario_override = str(scenario_path)
+                family_label = f"{family.name or args.family} member {member_index}"
+            file_config = load_file_config(args.config)
+            env = dict(os.environ)
+            # `serve` is inherently simulate mode; flags override env vars,
+            # env vars override the config file, the file overrides defaults.
+            env["SIMWORK_MODE"] = "simulate"
+            config = resolve_config(
+                file_config,
+                env,
+                scenario=scenario_override,
+                host=args.host,
+                port=args.port,
+            )
+
+            def banner(router: SimWorkRouter) -> list[str]:
+                lines = [f"SimWork fake OpenAI server running (scenario: {config.scenario_path})"]
+                if family_label is not None:
+                    lines.append(f"family: {family_label}")
+                lines.extend(f"{key}={value}" for key, value in router.env_overrides.items())
+                return lines
+
+            try:
+                serve(
+                    SimWorkRouter(config),
+                    banner=banner,
+                    stopping="Stopping fake OpenAI server.",
+                )
+            except ScenarioError as e:
+                print(f"simwork serve: error: {e}", file=sys.stderr)
+                return 1
     except (RoutingError, ConfigError, ValueError) as e:
-        print(f"simwork serve: error: {e}", file=sys.stderr)
-        return 1
-
-    def banner(router: SimWorkRouter) -> list[str]:
-        return [
-            f"SimWork fake OpenAI server running (scenario: {config.scenario_path})",
-            *(f"{key}={value}" for key, value in router.env_overrides.items()),
-        ]
-
-    try:
-        serve(SimWorkRouter(config), banner=banner, stopping="Stopping fake OpenAI server.")
-    except ScenarioError as e:
         print(f"simwork serve: error: {e}", file=sys.stderr)
         return 1
     return 0
@@ -431,7 +509,7 @@ def cmd_scale(args: argparse.Namespace) -> int:
     """Repeat the demo; print the batch summary; exit on the verdict."""
     print(f"Running the demo {args.runs} time(s) against shared mocks ($0)…")
     try:
-        report = run_scale(runs=args.runs)
+        report = run_scale(runs=args.runs, family=args.family)
     except ScaleError as e:
         print(f"simwork scale: error: {e}", file=sys.stderr)
         return 1

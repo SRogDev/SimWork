@@ -19,6 +19,17 @@ The batch starts both mocks once (fake OpenAI server + Prism ticket mock, via `s
 
 ## What this proves — and what it does not
 
-A thousand identical-scenario runs prove throughput and determinism at scale: SimWork can run the volume a pre-launch test plan needs, for $0, with every run reproducible. They do **not** prove variety — a thousand copies of one scenario are still one situation. For a thousand *different* situations, write scenario families: parameterise scenarios by seed and by named variations (different user inputs, different tool results, different failure modes). See [Scenario files](/guides/scenarios/) and the [AI configuration prompt](/guides/ai-prompt/).
+A thousand identical-scenario runs prove throughput and determinism at scale: SimWork can run the volume a pre-launch test plan needs, for $0, with every run reproducible. They do **not** prove variety — a thousand copies of one scenario are still one situation. For a thousand *different* situations, use a scenario family:
+
+```bash
+simwork scale --family examples/ticket-status-family.yaml --runs 100
+# SimWork scale report — 100 runs in 4.5s (22.0 runs/s)
+#   passed: 100/100
+#   family: ticket-status-family — one member per run, distinct hashes expected
+#   distinct trace hashes: 100
+# Overall: PASS
+```
+
+With `--family`, run `i` uses family member `i-1`: the scripted LLM's script is swapped per run (same server, same graph), so the batch covers different situations — different ticket ids, different outcomes, different failure modes — and the verdict only requires every run to pass the gate; the trace hashes are expected to differ. Repeat runs are deterministic: the same family + run count produces the same set of trace hashes. Verified live 2026-11-20: 10/10 passed with 10 distinct hashes, and a repeat 5-run batch produced the identical hash set. See [Scenario files](/guides/scenarios/) and the [AI configuration prompt](/guides/ai-prompt/).
 
 That is the shape of SimWork's first use case: a whole product tested before launch on a near-zero budget, thousands of simulated runs first, so you know how good the app will be in the real world before spending real API calls or production.

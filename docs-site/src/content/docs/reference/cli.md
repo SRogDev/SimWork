@@ -17,8 +17,8 @@ world API calls. Every simulated run costs $0 by default.
 Serve the fake OpenAI server from a scenario file (simulate mode).
 
 ```text
-usage: simwork serve [-h] [--scenario FILE] [--config FILE] [--host HOST]
-                     [--port PORT]
+usage: simwork serve [-h] [--scenario FILE] [--family FILE] [--member N]
+                     [--config FILE] [--host HOST] [--port PORT]
 
 Start the scripted, deterministic fake OpenAI server from a YAML scenario file
 and print the env vars a harness needs to point at it. Runs until Ctrl-C. $0 —
@@ -28,6 +28,8 @@ no real LLM calls.
 | Flag | Meaning |
 |---|---|
 | `--scenario FILE` | YAML scenario file (overrides `SIMWORK_SCENARIO`) |
+| `--family FILE` | YAML scenario family file: serve one member of it instead of a plain scenario (mutually exclusive with `--scenario`) |
+| `--member N` | Family member to serve (default `0`; needs `--family`) |
 | `--config FILE` | `simwork.yaml` config file (default: auto-discovered from the current directory up) |
 | `--host HOST` | Bind host (overrides `SIMWORK_HOST`, default `127.0.0.1`) |
 | `--port PORT` | Bind port (overrides `SIMWORK_PORT`, default `0` = ephemeral) |
@@ -134,21 +136,24 @@ $0 — no real LLM or world-API calls.
 Repeat the LangGraph demo N times and check every run is identical and passes.
 
 ```text
-usage: simwork scale [-h] [--runs N] [--report FILE]
+usage: simwork scale [-h] [--runs N] [--family FILE] [--report FILE]
 
 Repeat the LangGraph demo N times (default 1000) against the same already-
 running mocks — one fake OpenAI server + one Prism mock, the graph built once
-— and check every run passes the $0 gate with the same trace hash. This is the
-spec's scale smoke test (§7): thousands of simulated runs at $0 before launch,
-one deterministic per-run result each. Prints a summary; exits 0 when every
-run passed and all hashes are identical, 1 otherwise. Needs the demo
-dependencies (`uv sync --group demo`) and the `prism` binary. $0 — no real LLM
-or world-API calls.
+— and check every run passes the $0 gate with the same trace hash. With
+--family, run i uses family member i-1 instead, so the batch covers different
+situations and the verdict only requires every run to pass. This is the spec's
+scale smoke test (§7): thousands of simulated runs at $0 before launch, one
+deterministic per-run result each. Prints a summary; exits 0 when every run
+passed (and all hashes are identical, in single-scenario mode), 1 otherwise.
+Needs the demo dependencies (`uv sync --group demo`) and the `prism` binary.
+$0 — no real LLM or world-API calls.
 ```
 
 | Flag | Meaning |
 |---|---|
 | `--runs N` | Number of runs (default 1000) |
+| `--family FILE` | YAML scenario family file: run `i` uses family member `i-1`, so the batch covers different situations instead of one repeated scenario (the verdict then only requires every run to pass the gate) |
 | `--report FILE` | Also write the machine-readable JSON report to this file |
 
 See [Scale: 1,000 runs](/guides/scale/).

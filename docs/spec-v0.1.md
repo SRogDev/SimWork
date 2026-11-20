@@ -126,7 +126,12 @@ SimWork lets developers like Roger simulate AI-app functionality first, before s
   Polygrow — only when all four readiness criteria pass: (1) config-file
   loader for `simwork.yaml` — **DONE 2026-11-19** (`simwork/config.py`;
   `simwork serve` / `simwork eval` read it, flags > env > file >
-  defaults; 41 tests, verified live); (2) scenario families; (3) a Polygrow pilot
+  defaults; 41 tests, verified live); (2) scenario families —
+  **DONE 2026-11-20** (`simwork.families`; `simwork scale --family
+  FILE` runs one member per run, `simwork serve --family FILE
+  --member N` serves one member; member `i` gets seed `base + i` and
+  seeded parameter picks; 37 tests; verified live: 10/10 passed with
+  10 distinct hashes, repeat batch identical); (3) a Polygrow pilot
   (one real flow, scripted scenarios + small real calibration sample,
   gate passing); (4) docs site live. Until then the honest answer is:
   not yet. [S17]

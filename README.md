@@ -6,7 +6,7 @@ SimWork lets a Python developer add simulation to an existing app or harness wit
 
 📖 **Documentation: https://simwork.vercel.app** — guides, CLI reference, and design decisions.
 
-> **Status: v0.1.0 feature-complete — §7 acceptance criteria checked off 2026-11-19 (see below).** One item stays open by design: PyPI publication (a release decision for Roger — install from source/git is verified). CI is green on the latest landing (see the check-off). Tenro 0.2.3 was evaluated and **not** adopted as the interception layer (it requires decorating the harness, which contradicts the spec's no-rewrite rule — see `docs/tenro-evaluation-2026-11-16.md`). SimWork's own scripted, deterministic fake OpenAI server is in place (`simwork.llm`: `ScriptedLLM` + `FakeOpenAIServer`), scripted turns load from YAML scenario files (`simwork.llm.load_scenario`), and routing is wired: `SIMWORK_MODE=simulate` + a scenario file starts the mock server (`simwork serve` or `SimWorkRouter`), 204 tests. `simwork mock --api <name>` fetches an API's OpenAPI spec from APIs.guru and serves it as a mock with Prism, and `simwork mock --stateful` adds the stateful stub layer (create-then-read returns the created record — see below). `simwork eval` evaluates a recorded run trace with the deterministic metrics tool correctness + task completion and prints a pass/fail report, and a `TraceRecorder` (`simwork.trace`) captures such a trace from a real simulated run — assistant steps from the scripted LLM, tool-result steps from the harness executing the tools (see below). DeepEval 4.3.4 was verified: its `ToolCorrectnessMetric` is deterministic and works offline, but its constructor demands an `OPENAI_API_KEY`, so the $0 gate computes the two metrics natively with the same semantics — and the opt-in judge path (`simwork eval --judge`, `simwork.deepeval_judge`) now wires DeepEval's own classes, off by default, budgeted per run — see `docs/deepeval-wiring-2026-11-17.md`. `simwork init` scaffolds a working starter (config + scenario + eval suite — see below) and the pre-made AI configuration prompt (`prompts/configure-simwork.md` — see below). The LangGraph demo (`simwork demo` — see below) runs one LLM call against the fake server and one world-API call against a Prism mock, records the trace, and gates it — the end-to-end proof that the whole pipeline works at $0. The scale smoke test (`simwork scale` — see below) repeats that demo 1,000 times against shared mocks: 1000/1000 passed, one trace hash, 42.6s, $0 — the Polygrow pre-launch use case (thousands of runs) is demonstrably feasible. See `docs/` for the spec.
+> **Status: v0.1.0 feature-complete — §7 acceptance criteria checked off 2026-11-19 (see below).** One item stays open by design: PyPI publication (a release decision for Roger — install from source/git is verified). CI is green on the latest landing (see the check-off). Tenro 0.2.3 was evaluated and **not** adopted as the interception layer (it requires decorating the harness, which contradicts the spec's no-rewrite rule — see `docs/tenro-evaluation-2026-11-16.md`). SimWork's own scripted, deterministic fake OpenAI server is in place (`simwork.llm`: `ScriptedLLM` + `FakeOpenAIServer`), scripted turns load from YAML scenario files (`simwork.llm.load_scenario`), and routing is wired: `SIMWORK_MODE=simulate` + a scenario file starts the mock server (`simwork serve` or `SimWorkRouter`), 282 tests. Scenario families (`simwork.families`: one YAML file generating many scenarios from named parameters + a seed — see below) landed 2026-11-20, with `simwork scale --family` running a different member per run. `simwork mock --api <name>` fetches an API's OpenAPI spec from APIs.guru and serves it as a mock with Prism, and `simwork mock --stateful` adds the stateful stub layer (create-then-read returns the created record — see below). `simwork eval` evaluates a recorded run trace with the deterministic metrics tool correctness + task completion and prints a pass/fail report, and a `TraceRecorder` (`simwork.trace`) captures such a trace from a real simulated run — assistant steps from the scripted LLM, tool-result steps from the harness executing the tools (see below). DeepEval 4.3.4 was verified: its `ToolCorrectnessMetric` is deterministic and works offline, but its constructor demands an `OPENAI_API_KEY`, so the $0 gate computes the two metrics natively with the same semantics — and the opt-in judge path (`simwork eval --judge`, `simwork.deepeval_judge`) now wires DeepEval's own classes, off by default, budgeted per run — see `docs/deepeval-wiring-2026-11-17.md`. `simwork init` scaffolds a working starter (config + scenario + eval suite — see below) and the pre-made AI configuration prompt (`prompts/configure-simwork.md` — see below). The LangGraph demo (`simwork demo` — see below) runs one LLM call against the fake server and one world-API call against a Prism mock, records the trace, and gates it — the end-to-end proof that the whole pipeline works at $0. The scale smoke test (`simwork scale` — see below) repeats that demo 1,000 times against shared mocks: 1000/1000 passed, one trace hash, 42.6s, $0 — the Polygrow pre-launch use case (thousands of runs) is demonstrably feasible. See `docs/` for the spec.
 
 ## Quickstart
 
@@ -117,6 +117,41 @@ turns:                     # required, non-empty
 from simwork.llm import load_scenario
 
 llm = load_scenario("scenario.yaml").to_llm()  # deterministic ScriptedLLM
+```
+
+### Scenario families
+
+A thousand runs of one scenario are still one situation. A family is one YAML file that generates many scenarios: named parameters with value lists, `{{param}}` placeholders in the turns (and in the optional `expected:` block), and a base seed. Member `i` gets seed `base + i` and its parameter values from a PRNG seeded with that member seed — the same family + index always yields the same scenario. A whole-string `{{param}}` keeps the value's type (an int stays an int in tool arguments); inside a longer string the value is interpolated as text. Without an `expected:` block it is derived from the member's own turns. Loading is strict: an undeclared placeholder or a bad schema fails closed with `FamilyError`.
+
+```yaml
+name: ticket-status-family   # optional
+seed: 7                      # optional, default 0
+parameters:                  # required, non-empty
+  ticket_id: ["T-101", "T-202", "T-303"]
+  status: ["shipped", "processing", "delivered"]
+turns:                       # required, non-empty (scenario shape)
+  - tool_calls:
+      - name: lookup_ticket
+        arguments: {ticket_id: "{{ticket_id}}"}
+  - content: "Your {{ticket_id}} replacement has {{status}}."
+expected:                    # optional, trace-expected shape
+  tool_calls:
+    - name: lookup_ticket
+      arguments: {ticket_id: "{{ticket_id}}"}
+  final_answer_contains: ["{{status}}"]
+```
+
+```bash
+simwork serve --family examples/ticket-status-family.yaml --member 2  # serve one member
+simwork scale --family examples/ticket-status-family.yaml --runs 100   # one member per run
+```
+
+```python
+from simwork.families import load_family
+
+family = load_family("family.yaml")
+member = family.member(0)  # deterministic: seed 7, parameters picked from the lists
+llm = member.scenario.to_llm()
 ```
 
 ## API mock (`simwork mock`)
@@ -238,9 +273,19 @@ simwork scale --report evals/scale-report.json
 #   passed: 1000/1000
 #   distinct trace hashes: 1 (f7af385c722c…)
 # Overall: PASS
+
+# One member per run instead of one repeated scenario:
+simwork scale --family examples/ticket-status-family.yaml --runs 100
+# SimWork scale report — 100 runs in 4.5s (22.0 runs/s)
+#   passed: 100/100
+#   family: ticket-status-family — one member per run, distinct hashes expected
+#   distinct trace hashes: 100
+# Overall: PASS
 ```
 
 The batch starts both mocks once (fake OpenAI server + Prism ticket mock, via `simwork.demo.demo_servers`), builds the graph once, and repeats the demo run — resetting the scripted LLM between runs so every run replays the same scenario from the first turn. The batch passes only when every run passes the $0 gate *and* every run produces the same trace hash; a run that raises is recorded as a failed run with its error instead of aborting the batch. The machine-readable report (`--report`) carries one per-run result each (index, trace hash, verdict). Verified live 2026-11-19: 1000/1000 passed, one hash, 42.6s, $0 — the Polygrow pre-launch use case is demonstrably feasible.
+
+With `--family FILE`, run `i` uses family member `i-1` instead: the scripted LLM's script is swapped per run (same server, same graph), so the batch covers different situations — different ticket ids, different outcomes, different failure modes — and the verdict only requires every run to pass the gate; the trace hashes are expected to differ. Repeat runs are deterministic: the same family + run count produces the same set of trace hashes. Verified live 2026-11-20: 10/10 passed with 10 distinct hashes, and a repeat 5-run batch produced the identical hash set.
 
 | 4 | `simwork init` + pre-made AI configuration prompt + LangGraph demo end-to-end | ✅ Done — `simwork init` scaffolding landed (config + scenario + eval suite); pre-made prompt landed (`prompts/configure-simwork.md`, also generated by `init`); LangGraph demo landed (`simwork demo`: one LLM call + one Prism-mocked world-API call, trace recorded, $0 gate passes, deterministic trace hash); scale smoke test landed (`simwork scale`: 1000/1000 demo runs passed, one trace hash, 42.6s, $0) |
 
@@ -255,7 +300,7 @@ Out of scope for v0.1: a managed/hosted service (not designed before 7 days afte
 - **`simwork eval`:** exits 1 with a FAIL report on a failing trace (verified live), 0 on pass; `--report` writes the machine-readable report.
 - **`simwork mock --api`:** verified live — `simwork mock --api httpbin.org` fetched the spec from APIs.guru and Prism served it (`GET /get` → 200). The demo's world API is served the same way (bundled ticket spec via Prism).
 - **Stateful stub:** create-then-read returns the created record (tests in `tests/test_stateful.py`).
-- **pytest green:** 204 passed, 2 skipped (deepeval not installed, by design), `ruff check` clean — verified locally 2026-11-19. CI was red on three pushes: first an ordering bug in `demo_servers()` (the prism check ran before the demo-deps check, masking the install hint in environments with neither), then two missing-prism tests that were not isolated from the demo deps; both fixed 2026-11-19 — **CI green on `a16c071`**.
+- **pytest green:** 282 passed, 2 skipped (deepeval not installed, by design), `ruff check` clean — verified locally 2026-11-20 (204 passed on 2026-11-19; the config loader added 41, scenario families add 37 in this run). CI was red on three pushes: first an ordering bug in `demo_servers()` (the prism check ran before the demo-deps check, masking the install hint in environments with neither), then two missing-prism tests that were not isolated from the demo deps; both fixed 2026-11-19 — **CI green on `a16c071`**.
 - **README:** documents the under-15-minute setup, the pre-made prompt, and the $0 default (see Quickstart, Pre-made AI configuration prompt, The $0 default).
 - **No merge without confirmation:** there are no PR merges at all — landings are direct pushes to `main` under the SimWork-only autonomy order (Roger 2026-11-15), one small task per run, each reported in the factory chat for correction.
 - **Scale:** `simwork scale` 1000/1000 passed, one trace hash, 42.6s, $0 (verified live 2026-11-19).

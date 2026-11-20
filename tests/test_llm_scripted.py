@@ -27,9 +27,7 @@ MESSAGES = [{"role": "user", "content": "What's the status of ticket T-123?"}]
 def test_same_seed_same_script_same_responses() -> None:
     first = ScriptedLLM(SCRIPT, seed=7)
     second = ScriptedLLM(SCRIPT, seed=7)
-    assert [first.complete(MESSAGES) for _ in SCRIPT] == [
-        second.complete(MESSAGES) for _ in SCRIPT
-    ]
+    assert [first.complete(MESSAGES) for _ in SCRIPT] == [second.complete(MESSAGES) for _ in SCRIPT]
 
 
 def test_script_order_and_tool_call_shape() -> None:
@@ -60,6 +58,17 @@ def test_reset_replays_deterministically() -> None:
     first_run = [llm.complete(MESSAGES) for _ in SCRIPT]
     llm.reset()
     assert [llm.complete(MESSAGES) for _ in SCRIPT] == first_run
+
+
+def test_replace_script_swaps_script_and_seed_and_restarts() -> None:
+    llm = ScriptedLLM([{"content": "a"}], seed=1)
+    llm.complete(MESSAGES)
+    llm.replace_script([{"content": "b"}, {"content": "c"}], seed=9)
+    assert llm.seed == 9
+    assert llm.complete(MESSAGES)["choices"][0]["message"]["content"] == "b"
+    assert llm.complete(MESSAGES)["choices"][0]["message"]["content"] == "c"
+    llm.reset()
+    assert llm.complete(MESSAGES)["choices"][0]["message"]["content"] == "b"
 
 
 def test_complete_records_calls() -> None:

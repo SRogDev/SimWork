@@ -1,0 +1,21 @@
+# Example scenario family: the ticket-status scenario, parameterised.
+#
+# Member i gets seed 7 + i and its parameter values from a PRNG seeded
+# with that member seed, so the same family + index always yields the
+# same scenario — and `simwork scale --family examples/ticket-status-family.yaml`
+# runs a thousand *different* situations, not a thousand copies of one.
+name: ticket-status-family
+seed: 7
+parameters:
+  ticket_id: ["T-101", "T-202", "T-303"]
+  status: ["shipped", "processing", "delivered"]
+turns:
+  - tool_calls:
+      - name: lookup_ticket
+        arguments: {ticket_id: "{{ticket_id}}"}
+  - content: "Your {{ticket_id}} replacement has {{status}}."
+expected:
+  tool_calls:
+    - name: lookup_ticket
+      arguments: {ticket_id: "{{ticket_id}}"}
+  final_answer_contains: ["{{status}}"]

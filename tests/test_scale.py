@@ -113,3 +113,60 @@ def test_cli_scale_passes_and_writes_report(scale_deps, tmp_path, capsys):
 def test_cli_scale_rejects_zero_runs(capsys):
     assert main(["scale", "--runs", "0"]) == 1
     assert "runs must be a positive integer" in capsys.readouterr().err
+
+
+FAMILY_YAML = """\
+name: ticket-status-family
+seed: 7
+parameters:
+  ticket_id: ["T-101", "T-202", "T-303"]
+  status: ["shipped", "processing", "delivered"]
+turns:
+  - tool_calls:
+      - name: lookup_ticket
+        arguments: {ticket_id: "{{ticket_id}}"}
+  - content: "Your {{ticket_id}} replacement has {{status}}."
+expected:
+  tool_calls:
+    - name: lookup_ticket
+      arguments: {ticket_id: "{{ticket_id}}"}
+  final_answer_contains: ["{{status}}"]
+"""
+
+
+def _write_family(tmp_path):
+    path = tmp_path / "family.yaml"
+    path.write_text(FAMILY_YAML, encoding="utf-8")
+    return path
+
+
+def test_scale_family_passes_with_a_distinct_hash_per_member(scale_deps, tmp_path):
+    """Family mode: every run passes the gate, but the runs differ —
+    a thousand runs are a thousand different situations (spec S16)."""
+    report = run_scale(runs=3, family=_write_family(tmp_path))
+    assert report.passed
+    assert report.runs == 3
+    assert report.passed_runs == 3
+    assert len(report.distinct_hashes) == 3
+    assert report.family == "ticket-status-family"
+
+
+def test_scale_family_report_marks_family_mode(scale_deps, tmp_path):
+    report = run_scale(runs=2, family=_write_family(tmp_path))
+    data = json.loads(report.to_json())
+    assert data["family"] == "ticket-status-family"
+    assert data["passed"] is True
+    assert len(data["distinct_hashes"]) == 2
+    assert "family" in report.to_text()
+
+
+def test_scale_family_missing_file_fails_closed(tmp_path):
+    with pytest.raises(ScaleError, match="cannot read family file"):
+        run_scale(runs=2, family=tmp_path / "nope.yaml")
+
+
+def test_cli_scale_family_passes(scale_deps, tmp_path, capsys):
+    assert main(["scale", "--runs", "2", "--family", str(_write_family(tmp_path))]) == 0
+    out = capsys.readouterr().out
+    assert "PASS" in out
+    assert "ticket-status-family" in out

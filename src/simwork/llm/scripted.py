@@ -67,6 +67,20 @@ class ScriptedLLM:
         self._index = 0
         self.calls.clear()
 
+    def replace_script(self, script: list[Turn], *, seed: int | None = None) -> None:
+        """Swap in a new script and restart from its first turn.
+
+        The fake server keeps serving through the same LLM object, so a
+        batch (e.g. `simwork scale --family`) can run a different
+        scenario family member per run without restarting the server.
+        Pass `seed` to change the seed with the script (member seeds
+        differ per family member); otherwise the seed is kept.
+        """
+        self._script = [copy.deepcopy(turn) for turn in script]
+        if seed is not None:
+            self.seed = seed
+        self.reset()
+
     def _completion(self, turn: Turn, turn_index: int) -> dict:
         tool_calls = turn.get("tool_calls")
         if tool_calls:
@@ -94,8 +108,6 @@ class ScriptedLLM:
             "object": "chat.completion",
             "created": 0,
             "model": self.model,
-            "choices": [
-                {"index": 0, "message": message, "finish_reason": finish_reason}
-            ],
+            "choices": [{"index": 0, "message": message, "finish_reason": finish_reason}],
             "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
         }

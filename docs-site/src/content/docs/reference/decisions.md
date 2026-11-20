@@ -34,4 +34,4 @@ Prism (Stoplight, Apache 2.0) mocks an API's *shape* from its OpenAPI spec, but 
 - Scripted mocks verify logic and behaviour, not real reasoning quality. A passing gate never proves the real model would behave the same way.
 - Prism mocks shape, not real behaviour — no auth, no rate limits, no business logic — and catalog specs can be outdated.
 - `simwork mock` serves APIs from the APIs.guru catalog by name only; there is no `--spec` flag yet for a user's own OpenAPI file.
-- Scenario families (parameterised, seeded variations for a thousand *different* runs) are the next step for the scale story; today `simwork scale` repeats one scenario deterministically.
+- Scenario families cover variation only within the declared parameter lists: a family with 3 ticket ids × 3 statuses has 9 parameter combinations (plus a distinct seed per member), so a 1,000-run batch repeats combinations — the runs still differ per member, but the *situations* are bounded by the parameter space. Broaden the lists (or add parameters) to broaden the coverage.

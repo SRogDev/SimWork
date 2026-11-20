@@ -66,6 +66,24 @@ def test_loaded_scenario_replays_deterministically(tmp_path: Path) -> None:
     ]
 
 
+def test_to_dict_round_trips_through_parse_scenario() -> None:
+    import yaml
+
+    scenario = parse_scenario(VALID_YAML)
+    reparsed = parse_scenario(yaml.safe_dump(scenario.to_dict(), sort_keys=False))
+    assert reparsed == scenario
+    assert scenario.to_dict() == {
+        "name": "ticket-status",
+        "seed": 7,
+        "model": "simwork-mock",
+        "turns": [
+            {"content": "I will check the ticket."},
+            {"tool_calls": [{"name": "lookup_ticket", "arguments": {"ticket_id": "T-123"}}]},
+            {"content": "Your replacement has shipped."},
+        ],
+    }
+
+
 def test_to_llm_passes_recorder_to_the_llm(tmp_path: Path) -> None:
     """The recorder reaches the LLM through the scenario, not the server.
 

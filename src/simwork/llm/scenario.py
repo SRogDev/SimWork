@@ -62,6 +62,19 @@ class Scenario:
             copy.deepcopy(self.turns), seed=self.seed, model=self.model, recorder=recorder
         )
 
+    def to_dict(self) -> dict:
+        """Serialise back to the YAML shape `parse_scenario` reads.
+
+        Used to materialise a scenario family member as a file (so
+        `simwork serve --family` can serve one member through the same
+        path as a plain scenario file); round-trips through
+        `parse_scenario`.
+        """
+        data: dict = {"seed": self.seed, "model": self.model, "turns": copy.deepcopy(self.turns)}
+        if self.name is not None:
+            data["name"] = self.name
+        return data
+
 
 def load_scenario(path: str | Path) -> Scenario:
     """Load and validate a scenario from a YAML file."""
@@ -129,9 +142,7 @@ def _validate_turn(turn: Any, source: str, index: int) -> dict:
     has_content = "content" in turn
     has_calls = "tool_calls" in turn
     if has_content == has_calls:
-        raise ScenarioError(
-            f"{where}: turn needs exactly one of 'content' or 'tool_calls'"
-        )
+        raise ScenarioError(f"{where}: turn needs exactly one of 'content' or 'tool_calls'")
     if has_content:
         if not isinstance(turn["content"], str):
             raise ScenarioError(f"{where}: 'content' must be a string")
