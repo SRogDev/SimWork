@@ -321,10 +321,37 @@ Out of scope for v0.1: a managed/hosted service (not designed before 7 days afte
 - **`simwork eval`:** exits 1 with a FAIL report on a failing trace (verified live), 0 on pass; `--report` writes the machine-readable report.
 - **`simwork mock --api`:** verified live — `simwork mock --api httpbin.org` fetched the spec from APIs.guru and Prism served it (`GET /get` → 200). The demo's world API is served the same way (bundled ticket spec via Prism).
 - **Stateful stub:** create-then-read returns the created record (tests in `tests/test_stateful.py`).
-- **pytest green:** 282 passed, 2 skipped (deepeval not installed, by design), `ruff check` clean — verified locally 2026-11-20 (204 passed on 2026-11-19; the config loader added 41, scenario families add 37 in this run). CI was red on three pushes: first an ordering bug in `demo_servers()` (the prism check ran before the demo-deps check, masking the install hint in environments with neither), then two missing-prism tests that were not isolated from the demo deps; both fixed 2026-11-19 — **CI green on `a16c071`**.
+- **pytest green:** 298 passed, 2 skipped (deepeval not installed, by design), `ruff check` clean — verified locally 2026-11-20 (292 passed on 2026-11-20 after the Polygrow pilot; this run adds 6 contributing-surface tests). CI was red on three pushes: first an ordering bug in `demo_servers()` (the prism check ran before the demo-deps check, masking the install hint in environments with neither), then two missing-prism tests that were not isolated from the demo deps; both fixed 2026-11-19 — **CI green on `a16c071`**.
 - **README:** documents the under-15-minute setup, the pre-made prompt, and the $0 default (see Quickstart, Pre-made AI configuration prompt, The $0 default).
 - **No merge without confirmation:** there are no PR merges at all — landings are direct pushes to `main` under the SimWork-only autonomy order (Roger 2026-11-15), one small task per run, each reported in the factory chat for correction.
 - **Scale:** `simwork scale` 1000/1000 passed, one trace hash, 42.6s, $0 (verified live 2026-11-19).
+
+## Contributing
+
+SimWork is open source (MIT) and contributions are welcome — see
+[CONTRIBUTING.md](CONTRIBUTING.md) for the setup, the checks
+(`uv run ruff check .`, `uv run pytest`), and the rules that matter
+most: the spec is the constitution, $0 by default, no secrets,
+determinism, and one small change per PR with a README touch-up.
+Issues labelled `good first issue` are the best place to start.
+
+## Adoption roadmap (post-v0.1)
+
+v0.1 is done. The next job is adoption — making SimWork known and used
+(target: 1,000 GitHub stars, as open source, not commercialisation):
+
+| Step | What | Status |
+|---|---|---|
+| 1 | Docs site live (Astro + Starlight, `docs-site/`, Vercel) | ⏳ Blocked — Vercel connection not authorized for the team; needs the maintainer to grant access |
+| 2 | Real examples — 2–3 runnable recipes via `simwork init` (RAG assistant, API-backed agent, multi-tool agent) | ⬜ Not started |
+| 3 | Launch posts (X, Reddit, Hacker News "Show HN") — drafted for the maintainer to post | ⬜ Not started |
+| 4 | Community surface — `good first issue` labels, CONTRIBUTING.md, roadmap in README | ✅ Done — this change |
+| 5 | Measure — stars + clones + docs visits, reported monthly | ⬜ Not started |
+
+Readiness for Polygrow (the first real user): 3 of 4 criteria pass —
+`simwork.yaml` loader, scenario families, and the Polygrow pilot are
+all done and verified live. The docs site going live is the last gate;
+until then the honest answer is: not yet.
 
 ## Licence
 

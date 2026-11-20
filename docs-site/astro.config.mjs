@@ -42,6 +42,7 @@ export default defineConfig({
           items: [
             { label: 'CLI reference', slug: 'reference/cli' },
             { label: 'Design decisions', slug: 'reference/decisions' },
+            { label: 'Contributing', slug: 'reference/contributing' },
           ],
         },
       ],
