@@ -32,9 +32,35 @@ agent loop is a raw HTTP loop against the fake OpenAI server — the
 plain-OpenAI-client pattern, no LangGraph — bounded at 5 turns and
 failing closed on an unknown tool or a loop that never answers.
 
+## API-backed agent (`examples/recipes/api-backed-agent/`)
+
+An API-backed agent: it answers "How much is 100 US dollars in euros
+and pounds?" by calling a `get_exchange_rates` tool — a thin wrapper
+over one endpoint of the ExchangeRate-API spec, fetched from the
+APIs.guru catalog — then computing the answer from the structured
+rates the API returns (100 USD × 0.92 = 92 EUR, 100 USD × 0.79 =
+79 GBP).
+
+```bash
+cd examples/recipes/api-backed-agent
+python run.py                   # live run: both mocks, gate printed
+pytest                          # the eval suite passes
+simwork serve --scenario scenarios/api-backed-agent.yaml
+simwork eval --trace evals/api-backed-agent-trace.json
+```
+
+The pattern worth copying is the 1:1 mapping from OpenAPI operation
+to tool: each tool wraps one endpoint, path and query parameters
+become tool arguments, and the answer is computed from the API's
+structured fields, not quoted from prose. The recipe's own test
+asserts the amounts in the answer equal 100 USD times the rates the
+tool result returned. The bundled spec is the real ExchangeRate-API
+v4 spec from APIs.guru, with one documented addition: a fixed
+`example:` on the 200 response, so the mock returns deterministic
+rates (the fetched spec has no example for `rates`). The agent loop
+is the same raw-HTTP, bounded, fail-closed loop as the RAG recipe.
+
 ## Coming next
 
-- **API-backed agent** — an agent whose tools are real world-API
-  calls, all served by Prism mocks from APIs.guru specs.
 - **Multi-tool agent** — an agent that chains several tools in one
   run, with the trace gating every tool call in order.

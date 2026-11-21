@@ -1,0 +1,50 @@
+{
+  "expected": {
+    "final_answer_contains": [
+      "92 EUR",
+      "79 GBP"
+    ],
+    "tool_calls": [
+      {
+        "arguments": {
+          "base_currency": "USD"
+        },
+        "name": "get_exchange_rates"
+      }
+    ]
+  },
+  "run_id": "api-backed-agent-1",
+  "seed": 11,
+  "steps": [
+    {
+      "tool_calls": [
+        {
+          "arguments": {
+            "base_currency": "USD"
+          },
+          "name": "get_exchange_rates"
+        }
+      ],
+      "type": "assistant"
+    },
+    {
+      "name": "get_exchange_rates",
+      "result": {
+        "base": "USD",
+        "date": "2026-11-21",
+        "rates": {
+          "CAD": 1.36,
+          "EUR": 0.92,
+          "GBP": 0.79,
+          "JPY": 151.2
+        },
+        "time_last_updated": 1795238400
+      },
+      "type": "tool_result"
+    },
+    {
+      "content": "100 USD is 92 EUR and 79 GBP at the current rates (1 USD = 0.92 EUR, 1 USD = 0.79 GBP).",
+      "type": "assistant"
+    }
+  ]
+}

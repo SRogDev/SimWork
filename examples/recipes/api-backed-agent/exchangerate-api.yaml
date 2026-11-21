@@ -1,0 +1,82 @@
+# ExchangeRate-API — the world API the API-backed-agent recipe's tool calls.
+# Fetched from the APIs.guru catalog
+# (https://api.apis.guru/v2/specs/exchangerate-api.com/4/openapi.json,
+# ExchangeRate-API v4, OpenAPI 3.0.2) and converted JSON -> YAML.
+# Served as a mock by Prism (`run.py` starts it from this file).
+#
+# ONE addition to the fetched spec, marked below: an `example:` on the
+# 200 response, so the mock returns deterministic rates (1 USD = 0.92
+# EUR, 1 USD = 0.79 GBP) instead of Prism-generated numbers. The
+# fetched spec has no example for `rates`, and a recipe whose answer
+# is computed from the API data needs the data to be fixed. Keep the
+# example in sync with scenarios/api-backed-agent.yaml (the scripted
+# answer computes 100 USD from these rates) and
+# evals/api-backed-agent-trace.json (the recorded tool result).
+openapi: 3.0.2
+info:
+  title: ExchangeRate-API
+  description: Fetch the latest currency exchange rates via API. ExchangeRate-API is free and unlimited.
+  termsOfService: https://www.exchangerate-api.com/terms
+  version: "4"
+servers:
+  - url: https://api.exchangerate-api.com/v4
+    description: No authentication endpoint. Returns latest exchange rates and some metadata.
+paths:
+  /latest/{base_currency}:
+    get:
+      summary: Returns latest exchange rates in parameter-supplied base currency.
+      parameters:
+        - description: "**Base Currency**. *Example: USD*. You can use any of the ISO 4217 currency codes we support. See https://www.exchangerate-api.com/docs/supported-currencies"
+          in: path
+          name: base_currency
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  base:
+                    description: The currency code you supplied as base in your request
+                    example: USD
+                    type: string
+                  date:
+                    description: The date these exchange rates are for
+                    type: string
+                  rates:
+                    additionalProperties:
+                      format: double
+                      type: number
+                    description: Each supported currency code in terms of the base currency
+                    type: object
+                  time_last_updated:
+                    description: The epoch time this set of exchange rates was generated
+                    example: 1556293443
+                    type: integer
+              # ADDED by the SimWork factory (not in the fetched spec):
+              # a fixed example so the Prism mock returns deterministic
+              # rates the scripted answer can compute from.
+              example:
+                base: USD
+                date: "2026-11-21"
+                rates:
+                  EUR: 0.92
+                  GBP: 0.79
+                  JPY: 151.2
+                  CAD: 1.36
+                time_last_updated: 1795238400
+        '404':
+          description: Currency code not supported
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error_type:
+                    type: string
+                  result:
+                    type: string

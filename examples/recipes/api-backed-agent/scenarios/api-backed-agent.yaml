@@ -1,0 +1,12 @@
+# API-backed-agent recipe — scripted LLM turns.
+# Turn 1 calls the exchange-rates tool (one thin wrapper over the
+# ExchangeRate-API endpoint in exchangerate-api.yaml); turn 2 answers
+# by computing from the structured rates the tool returns
+# (100 USD x 0.92 = 92 EUR, 100 USD x 0.79 = 79 GBP).
+name: api-backed-agent
+seed: 11
+turns:
+  - tool_calls:
+      - name: get_exchange_rates
+        arguments: {base_currency: "USD"}
+  - content: "100 USD is 92 EUR and 79 GBP at the current rates (1 USD = 0.92 EUR, 1 USD = 0.79 GBP)."
