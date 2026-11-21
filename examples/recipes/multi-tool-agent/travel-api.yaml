@@ -1,0 +1,124 @@
+# Travel API — the world API the multi-tool recipe's tools call.
+# Served as a mock by Prism (`run.py` starts it from this file).
+# Two operations, one per tool: `search_flights` wraps GET /flights,
+# `search_hotels` wraps GET /hotels. The examples are the data the
+# tools return; keep them in sync with
+# scenarios/multi-tool-agent.yaml (the scripted turns quote them)
+# and evals/multi-tool-agent-trace.json (the recorded tool results).
+# The flight list is deliberately unsorted — the agent picks the
+# cheapest (DL456, $420), and the hotel call's arguments come from
+# that flight's destination city and arrival date.
+openapi: 3.0.0
+info:
+  title: Travel API
+  version: 1.0.0
+paths:
+  /flights:
+    get:
+      parameters:
+        - name: from
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: to
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: date
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  flights:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        flight:
+                          type: string
+                        from:
+                          type: string
+                        to:
+                          type: string
+                        date:
+                          type: string
+                        price_usd:
+                          type: number
+                        arrival_date:
+                          type: string
+                        destination_city:
+                          type: string
+              example:
+                flights:
+                  - flight: "AF123"
+                    from: "JFK"
+                    to: "CDG"
+                    date: "2026-12-10"
+                    price_usd: 480
+                    arrival_date: "2026-12-10"
+                    destination_city: "Paris"
+                  - flight: "DL456"
+                    from: "JFK"
+                    to: "CDG"
+                    date: "2026-12-10"
+                    price_usd: 420
+                    arrival_date: "2026-12-10"
+                    destination_city: "Paris"
+  /hotels:
+    get:
+      parameters:
+        - name: city
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: checkin
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: nights
+          in: query
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  hotels:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        city:
+                          type: string
+                        checkin:
+                          type: string
+                        nights:
+                          type: integer
+                        price_per_night_usd:
+                          type: number
+              example:
+                hotels:
+                  - name: "Hôtel Lumière"
+                    city: "Paris"
+                    checkin: "2026-12-10"
+                    nights: 1
+                    price_per_night_usd: 120

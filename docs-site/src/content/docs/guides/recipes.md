@@ -60,7 +60,29 @@ v4 spec from APIs.guru, with one documented addition: a fixed
 rates (the fetched spec has no example for `rates`). The agent loop
 is the same raw-HTTP, bounded, fail-closed loop as the RAG recipe.
 
-## Coming next
+## Multi-tool agent (`examples/recipes/multi-tool-agent/`)
 
-- **Multi-tool agent** — an agent that chains several tools in one
-  run, with the trace gating every tool call in order.
+A multi-tool agent: it plans a trip from New York to Paris on
+2026-12-10 by calling a `search_flights` tool — a thin wrapper over
+one endpoint of a bundled travel API, served as a Prism mock — then
+a `search_hotels` tool over the same API, and finally answering with
+the total for flight + one night ($420 + $120 = $540).
+
+```bash
+cd examples/recipes/multi-tool-agent
+python run.py                   # live run: both mocks, gate printed
+pytest                          # the eval suite passes
+simwork serve --scenario scenarios/multi-tool-agent.yaml
+simwork eval --trace evals/multi-tool-agent-trace.json
+```
+
+The pattern worth copying is the chain: each tool call's arguments
+come from an earlier result — the hotel call asks for Paris from
+2026-12-10 because the cheapest flight the first call returned
+(DL456, $420) lands in Paris on 2026-12-10 — and the final answer
+is computed from the chained results. The recipe's own test asserts
+the chain: the hotel arguments match the cheapest flight's
+destination and arrival date, and the total equals flight + hotel ×
+nights. The flight list in the bundled spec is deliberately
+unsorted, so the agent picks the cheapest. The agent loop is the
+same raw-HTTP, bounded, fail-closed loop as the RAG recipe.

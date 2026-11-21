@@ -1,0 +1,16 @@
+# Multi-tool-agent recipe — scripted LLM turns.
+# Turn 1 calls the flight-search tool; turn 2 calls the hotel-search
+# tool — its arguments come from the flight result (destination city
+# "Paris" and arrival date "2026-12-10" of the cheapest flight,
+# DL456 at $420); turn 3 answers by adding flight + hotel
+# ($420 + $120 x 1 night = $540 total).
+name: multi-tool-agent
+seed: 21
+turns:
+  - tool_calls:
+      - name: search_flights
+        arguments: {from: "JFK", to: "CDG", date: "2026-12-10"}
+  - tool_calls:
+      - name: search_hotels
+        arguments: {city: "Paris", checkin: "2026-12-10", nights: 1}
+  - content: "Cheapest flight JFK → CDG on 2026-12-10 is $420 (DL456), arriving 2026-12-10. Hotel in Paris for 1 night from 2026-12-10 is $120/night (Hôtel Lumière). Total: $420 + $120 = $540."

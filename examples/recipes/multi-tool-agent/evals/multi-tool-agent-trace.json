@@ -1,0 +1,102 @@
+{
+  "expected": {
+    "final_answer_contains": [
+      "$540",
+      "$420",
+      "$120"
+    ],
+    "tool_calls": [
+      {
+        "arguments": {
+          "date": "2026-12-10",
+          "from": "JFK",
+          "to": "CDG"
+        },
+        "name": "search_flights"
+      },
+      {
+        "arguments": {
+          "checkin": "2026-12-10",
+          "city": "Paris",
+          "nights": 1
+        },
+        "name": "search_hotels"
+      }
+    ]
+  },
+  "run_id": "multi-tool-agent-1",
+  "seed": 21,
+  "steps": [
+    {
+      "tool_calls": [
+        {
+          "arguments": {
+            "date": "2026-12-10",
+            "from": "JFK",
+            "to": "CDG"
+          },
+          "name": "search_flights"
+        }
+      ],
+      "type": "assistant"
+    },
+    {
+      "name": "search_flights",
+      "result": {
+        "flights": [
+          {
+            "arrival_date": "2026-12-10",
+            "date": "2026-12-10",
+            "destination_city": "Paris",
+            "flight": "AF123",
+            "from": "JFK",
+            "price_usd": 480,
+            "to": "CDG"
+          },
+          {
+            "arrival_date": "2026-12-10",
+            "date": "2026-12-10",
+            "destination_city": "Paris",
+            "flight": "DL456",
+            "from": "JFK",
+            "price_usd": 420,
+            "to": "CDG"
+          }
+        ]
+      },
+      "type": "tool_result"
+    },
+    {
+      "tool_calls": [
+        {
+          "arguments": {
+            "checkin": "2026-12-10",
+            "city": "Paris",
+            "nights": 1
+          },
+          "name": "search_hotels"
+        }
+      ],
+      "type": "assistant"
+    },
+    {
+      "name": "search_hotels",
+      "result": {
+        "hotels": [
+          {
+            "checkin": "2026-12-10",
+            "city": "Paris",
+            "name": "H\u00f4tel Lumi\u00e8re",
+            "nights": 1,
+            "price_per_night_usd": 120
+          }
+        ]
+      },
+      "type": "tool_result"
+    },
+    {
+      "content": "Cheapest flight JFK \u2192 CDG on 2026-12-10 is $420 (DL456), arriving 2026-12-10. Hotel in Paris for 1 night from 2026-12-10 is $120/night (H\u00f4tel Lumi\u00e8re). Total: $420 + $120 = $540.",
+      "type": "assistant"
+    }
+  ]
+}
